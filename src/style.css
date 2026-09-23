@@ -1009,3 +1009,46 @@ body.dragging-block .managed-block:not(.drag-source):not(.drop-before):not(.drop
   background:var(--action-hover);
   color:var(--strong)
 }
+
+
+/* Copy now lives in the centered code toolbar; no reserved corner space. */
+.code-shell pre{
+  padding-right:14px
+}
+@media(max-width:600px){
+  .code-shell pre{
+    padding-right:10px
+  }
+}
+
+
+/* Block toolbars sit on the right edge of the top frame. */
+.heading-block>.branch-head>.block-actions,
+.item-block>.item-head>.block-actions,
+.raw-block>.block-actions,
+.code-shell>.code-actions{
+  left:auto;
+  right:8px;
+  bottom:auto;
+  transform:translateY(-50%)
+}
+.heading-block>.branch-head>.block-actions{top:-12px}
+.item-block>.item-head>.block-actions{top:-10px}
+.raw-block>.block-actions,
+.code-shell>.code-actions{top:0}
+
+@media(hover:none){
+  .heading-block>.branch-head>.block-actions,
+  .item-block>.item-head>.block-actions,
+  .raw-block>.block-actions,
+  .code-shell>.code-actions{
+    left:auto;
+    right:6px;
+    bottom:auto;
+    transform:translateY(-50%)
+  }
+  .heading-block>.branch-head>.block-actions{top:-9px}
+  .item-block>.item-head>.block-actions{top:-8px}
+  .raw-block>.block-actions,
+  .code-shell>.code-actions{top:0}
+}

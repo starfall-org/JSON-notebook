@@ -522,35 +522,71 @@ function renderedMarkdown(source: string) {
 
 function normalizeNestedCodeIndent(source: string) {
   const lines = source.split("\n");
+  const itemStack: string[] = [];
+
+  const popToParentForIndent = (indentLength: number) => {
+    while (itemStack.length && itemStack[itemStack.length - 1].length >= indentLength) {
+      itemStack.pop();
+    }
+  };
 
   for (let index = 0; index < lines.length; index += 1) {
-    const item = lines[index].match(/^(\s*)-\s+\*\*.+?\*\*\s*$/);
-    if (!item) continue;
+    const line = lines[index];
 
-    const baseIndent = item[1];
-    let scan = index + 1;
-    while (scan < lines.length && lines[scan].trim() === "") scan += 1;
-
-    const opening = lines[scan]?.match(/^(\s*)(\x60{3,})([^\x60]*)$/);
-    if (!opening) continue;
-
-    const currentIndent = opening[1];
-    if (currentIndent.length <= baseIndent.length) continue;
-
-    const wantedIndent = baseIndent + "    ";
-    const marker = opening[2];
-
-    for (let lineIndex = scan; lineIndex < lines.length; lineIndex += 1) {
-      if (lines[lineIndex].startsWith(currentIndent)) {
-        lines[lineIndex] = wantedIndent + lines[lineIndex].slice(currentIndent.length);
-      }
-
-      const raw = lines[lineIndex].slice(wantedIndent.length);
-      if (lineIndex > scan && raw === marker) {
-        index = lineIndex;
-        break;
-      }
+    if (/^ {0,3}#{1,6}[ \t]+/.test(line)) {
+      itemStack.length = 0;
+      continue;
     }
+
+    const item = line.match(/^(\s*)-\s+\*\*.+?\*\*\s*$/);
+    if (item) {
+      popToParentForIndent(item[1].length);
+      itemStack.push(item[1]);
+      continue;
+    }
+
+    if (!line.trim()) continue;
+
+    const opening = line.match(/^(\s*)(\x60{3,})([^\x60]*)$/);
+    if (opening) {
+      const currentIndent = opening[1];
+      popToParentForIndent(currentIndent.length);
+
+      if (!itemStack.length) {
+        const marker = opening[2];
+        for (let scan = index + 1; scan < lines.length; scan += 1) {
+          if (lines[scan] === currentIndent + marker) {
+            index = scan;
+            break;
+          }
+        }
+        continue;
+      }
+
+      const ownerIndent = itemStack[itemStack.length - 1];
+      const wantedIndent = ownerIndent + "    ";
+      const marker = opening[2];
+
+      lines[index] = wantedIndent + line.slice(currentIndent.length);
+
+      for (let scan = index + 1; scan < lines.length; scan += 1) {
+        const scanLine = lines[scan];
+
+        if (scanLine.startsWith(currentIndent)) {
+          lines[scan] = wantedIndent + scanLine.slice(currentIndent.length);
+        }
+
+        if (scanLine === currentIndent + marker) {
+          index = scan;
+          break;
+        }
+      }
+
+      continue;
+    }
+
+    const indentLength = line.match(/^ */)?.[0].length || 0;
+    popToParentForIndent(indentLength);
   }
 
   return lines.join("\n");
@@ -827,8 +863,8 @@ function renderManagedBlock(block: MarkdownBlock) {
     return '<section class="managed-block code-shell' + nested + '" data-source-block="' + block.id + '">' +
       '<pre><code class="' + esc(languageClass) + '">' + esc(block.value || "") + '</code></pre>' +
       (language ? '<span class="code-language-label">' + esc(language) + '</span>' : "") +
-      '<button class="code-copy-always" type="button" data-action="copy" data-block="' + esc(block.id) + '" title="Copy" aria-label="Copy">' + icons.copy + '</button>' +
       '<div class="block-actions code-actions">' +
+        actionButton("copy", "copy", "Copy", block.id) +
         actionButton("edit", "edit", "Edit", block.id) +
         actionButton("move", "move", "Move", block.id) +
       '</div>' +
@@ -1282,7 +1318,7 @@ async function moveBlock(sourceId: string, targetId: string, mode: DropMode) {
 
   const targetRange = blockMoveRange(target, blocks);
   let insertAt = mode === "inside"
-    ? target.end
+    ? targetRange.end
     : mode === "after"
       ? targetRange.end
       : target.start;
@@ -1297,10 +1333,21 @@ async function moveBlock(sourceId: string, targetId: string, mode: DropMode) {
   }
 
   if (source.type === "code" && sourceRange.start === source.start && sourceRange.end === source.end) {
+    const owningItem = [...blocks]
+      .reverse()
+      .find(candidate => {
+        if (candidate.type !== "item" || candidate.id === source.id) return false;
+        const range = blockMoveRange(candidate, blocks);
+        return target.start > candidate.start && target.start < range.end;
+      });
+
     const targetIndent =
       mode === "inside" && target.type === "item"
         ? (target.indent || "") + "    "
-        : "";
+        : owningItem
+          ? (owningItem.indent || "") + "    "
+          : "";
+
     moving = reindentCodeSource(moving, source.indent || "", targetIndent);
   }
 
@@ -1397,6 +1444,41 @@ function resolveDropTarget(x: number, y: number, sourceId: string): ResolvedDrop
       direct.block.type === "item" &&
       (source.type === "code" || source.type === "other")
     ) {
+      const childElements = [...direct.element.querySelectorAll<HTMLElement>(
+        ":scope > .item-children > [data-source-block]"
+      )]
+        .map(element => {
+          const id = element.dataset.sourceBlock || "";
+          const block = byId.get(id);
+          if (!block || !isAllowed(block)) return null;
+          return { id, block, element, rect: element.getBoundingClientRect() };
+        })
+        .filter((child): child is NonNullable<typeof child> => Boolean(child))
+        .sort((a, b) => a.rect.top - b.rect.top);
+
+      if (childElements.length) {
+        for (let index = 0; index < childElements.length; index += 1) {
+          const child = childElements[index];
+          const previous = childElements[index - 1];
+
+          if (!previous && y < child.rect.top) {
+            return { id: child.id, mode: "before", element: child.element };
+          }
+
+          if (previous && y >= previous.rect.bottom && y <= child.rect.top) {
+            const midpoint = (previous.rect.bottom + child.rect.top) / 2;
+            return y < midpoint
+              ? { id: previous.id, mode: "after", element: previous.element }
+              : { id: child.id, mode: "before", element: child.element };
+          }
+        }
+
+        const last = childElements[childElements.length - 1];
+        if (y > last.rect.bottom) {
+          return { id: last.id, mode: "after", element: last.element };
+        }
+      }
+
       return {
         id: direct.id,
         mode: "inside",
