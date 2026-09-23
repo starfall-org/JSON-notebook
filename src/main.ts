@@ -1440,15 +1440,15 @@ function handleBlockAction(action: string, blockId: string) {
   const block = blockId ? blocks.find(item => item.id === blockId) : undefined;
 
   if (action === "new-heading") {
-    startNewBlock("heading", 0, { level: 1 });
+    startNewBlock("heading", currentContent.length, { level: 1 });
     return;
   }
   if (action === "new-item") {
-    startNewBlock("item", 0);
+    startNewBlock("item", currentContent.length);
     return;
   }
   if (action === "new-code") {
-    startNewBlock("code", 0);
+    startNewBlock("code", currentContent.length);
     return;
   }
   if (action === "edit" && block) {
@@ -1456,19 +1456,23 @@ function handleBlockAction(action: string, blockId: string) {
     return;
   }
   if (action === "child-branch" && block?.type === "heading") {
-    startNewBlock("heading", block.end, { level: Math.min(6, (block.level || 1) + 1) });
+    const range = blockMoveRange(block, blocks);
+    startNewBlock("heading", range.end, { level: Math.min(6, (block.level || 1) + 1) });
     return;
   }
   if (action === "add-item" && block?.type === "heading") {
-    startNewBlock("item", block.end);
+    const range = blockMoveRange(block, blocks);
+    startNewBlock("item", range.end);
     return;
   }
   if (action === "add-code" && block?.type === "heading") {
-    startNewBlock("code", block.end);
+    const range = blockMoveRange(block, blocks);
+    startNewBlock("code", range.end);
     return;
   }
   if (action === "item-code" && block?.type === "item") {
-    startNewBlock("code", block.end, {
+    const range = blockMoveRange(block, blocks);
+    startNewBlock("code", range.end, {
       parentIndent: block.indent || "",
       indent: (block.indent || "") + "    "
     });
