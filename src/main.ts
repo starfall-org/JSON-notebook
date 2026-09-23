@@ -1771,7 +1771,7 @@ if ("serviceWorker" in navigator) {
     });
     if ("caches" in window) {
       caches.keys().then(keys => Promise.all(
-        keys.filter(key => key.startsWith("secret-keep-")).map(key => caches.delete(key))
+        keys.filter(key => key.startsWith("secret-keep-") || key.startsWith("secrets-keep-")).map(key => caches.delete(key))
       ));
     }
   });

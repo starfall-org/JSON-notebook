@@ -600,28 +600,6 @@ body.dragging-block .block-action[data-action="move"]{cursor:grabbing}
     padding-left:4px;
     padding-right:4px
   }
-  .doc-topbar{
-    grid-template-columns:44px minmax(0,1fr);
-    grid-template-rows:44px 42px;
-    gap:2px 6px;
-    padding-bottom:5px
-  }
-  .doc-name{
-    padding-right:8px;
-    text-align:left;
-    font-size:14px
-  }
-  .doc-actions{
-    grid-column:1 / -1;
-    display:flex;
-    justify-content:flex-end;
-    gap:4px;
-    padding:0 2px
-  }
-  .doc-actions .block-action{
-    width:40px;
-    height:40px
-  }
   .heading-block{
     margin:8px 0;
     padding:8px
@@ -817,19 +795,6 @@ body.dragging-block .block-action[data-action="move"]{cursor:grabbing}
   gap:4px;
   min-width:0
 }
-.theme-select{
-  height:36px;
-  max-width:104px;
-  padding:0 26px 0 9px;
-  border:1px solid var(--line);
-  border-radius:9px;
-  outline:0;
-  background:var(--panel);
-  color:var(--text);
-  font-size:12px;
-  font-weight:650
-}
-.theme-select:focus{border-color:var(--focus)}
 
 @media(max-width:420px){
   .folder-topbar.root-topbar{
@@ -844,15 +809,7 @@ body.dragging-block .block-action[data-action="move"]{cursor:grabbing}
     padding-left:4px
   }
   .root-controls{grid-area:controls}
-  .theme-select{
-    width:82px;
-    max-width:82px;
-    padding-left:7px;
-    padding-right:20px
-  }
 }
-
-@media(max-width:420px){.doc-topbar{grid-template-columns:40px minmax(0,1fr) auto;grid-template-rows:44px;gap:3px;min-height:44px;padding-bottom:0}.doc-name{min-width:0;padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;font-size:13px}.doc-actions{grid-column:auto;display:flex;align-items:center;justify-content:flex-end;gap:2px;padding:0}.doc-actions .block-action{width:34px;height:34px}}
 
 
 /* Compact file header: keep Back, title and file actions on one row on mobile. */
@@ -948,19 +905,3 @@ body.dragging-block .block-action[data-action="move"]{cursor:grabbing}
   }
 }
 
-
-/* Copy button: inside-right and vertically centered. */
-.code-copy-always{
-  top:50%;
-  right:2px;
-  bottom:auto;
-  transform:translateY(-50%)
-}
-@media(pointer:coarse){
-  .code-copy-always{
-    top:50%;
-    right:2px;
-    bottom:auto;
-    transform:translateY(-50%)
-  }
-}
