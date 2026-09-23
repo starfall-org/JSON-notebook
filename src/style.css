@@ -1460,3 +1460,31 @@ body.dragging-block .managed-block:not(.drag-source):not(.drop-before):not(.drop
     pointer-events:auto
   }
 }
+
+
+/* Keep edit controls compact; never stretch toolbars across the editor. */
+.block-editor>.edit-actions,
+.code-editor-footer,
+.content-mode-switch{
+  width:max-content;
+  max-width:calc(100% - 16px);
+  flex:0 0 auto
+}
+.code-editor-footer{
+  left:auto !important;
+  right:8px;
+  justify-content:flex-start
+}
+@media(max-width:420px){
+  .content-mode-switch{
+    width:max-content;
+    justify-content:flex-start
+  }
+  .content-mode-switch button{
+    flex:0 0 auto
+  }
+  .code-editor-footer{
+    left:auto !important;
+    right:6px
+  }
+}
