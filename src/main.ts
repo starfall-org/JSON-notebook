@@ -48,6 +48,7 @@ type EditState = {
   level?: number;
   indent?: string;
   parentIndent?: string;
+  parentBlockId?: string;
   value: string;
   language?: string;
 };
@@ -1130,19 +1131,18 @@ function renderDocumentBlocks() {
     let childHtml = "";
     let next = index + 1;
 
-    if (editing?.mode === "new" && editing.insertAt === item.end) {
-      childHtml += renderBlockEditor(editing);
-    }
-
     while (next < blocks.length && blocks[next].start < range.end) {
       const child = blocks[next];
       childHtml += renderManagedBlock(child);
-
-      if (editing?.mode === "new" && editing.insertAt === child.end) {
-        childHtml += renderBlockEditor(editing);
-      }
-
       next += 1;
+    }
+
+    if (
+      editing?.mode === "new" &&
+      editing.parentBlockId === item.id &&
+      editing.insertAt === range.end
+    ) {
+      childHtml += renderBlockEditor(editing);
     }
 
     return {
@@ -1156,10 +1156,6 @@ function renderDocumentBlocks() {
     const level = heading.level || 1;
     let childHtml = "";
     let next = index + 1;
-
-    if (editing?.mode === "new" && editing.insertAt === heading.end) {
-      childHtml += renderBlockEditor(editing);
-    }
 
     while (next < blocks.length) {
       const block = blocks[next];
@@ -1184,12 +1180,16 @@ function renderDocumentBlocks() {
       }
 
       childHtml += renderManagedBlock(block);
-
-      if (editing?.mode === "new" && editing.insertAt === block.end) {
-        childHtml += renderBlockEditor(editing);
-      }
-
       next += 1;
+    }
+
+    const range = blockMoveRange(heading, blocks);
+    if (
+      editing?.mode === "new" &&
+      editing.parentBlockId === heading.id &&
+      editing.insertAt === range.end
+    ) {
+      childHtml += renderBlockEditor(editing);
     }
 
     return {
@@ -1224,14 +1224,15 @@ function renderDocumentBlocks() {
 
     html += renderManagedBlock(block);
 
-    if (editing?.mode === "new" && editing.insertAt === block.end) {
-      html += renderBlockEditor(editing);
-    }
-
     index += 1;
   }
 
-  if (!blocks.length && editing?.mode === "new" && editing.insertAt !== 0) {
+  if (
+    editing?.mode === "new" &&
+    !editing.parentBlockId &&
+    currentContent.length > 0 &&
+    editing.insertAt === currentContent.length
+  ) {
     html += renderBlockEditor(editing);
   }
 
@@ -1245,6 +1246,7 @@ function startNewBlock(type: EditState["type"], insertAt: number, options: Parti
     level: options.level,
     indent: options.indent || "",
     parentIndent: options.parentIndent,
+    parentBlockId: options.parentBlockId,
     value: "",
     language: ""
   };
@@ -1543,23 +1545,27 @@ function handleBlockAction(action: string, blockId: string) {
   }
   if (action === "child-branch" && block?.type === "heading") {
     const range = blockMoveRange(block, blocks);
-    startNewBlock("heading", range.end, { level: Math.min(6, (block.level || 1) + 1) });
+    startNewBlock("heading", range.end, {
+      level: Math.min(6, (block.level || 1) + 1),
+      parentBlockId: block.id
+    });
     return;
   }
   if (action === "add-item" && block?.type === "heading") {
     const range = blockMoveRange(block, blocks);
-    startNewBlock("item", range.end);
+    startNewBlock("item", range.end, { parentBlockId: block.id });
     return;
   }
   if (action === "add-code" && block?.type === "heading") {
     const range = blockMoveRange(block, blocks);
-    startNewBlock("code", range.end);
+    startNewBlock("code", range.end, { parentBlockId: block.id });
     return;
   }
   if (action === "item-code" && block?.type === "item") {
     const range = blockMoveRange(block, blocks);
     startNewBlock("code", range.end, {
       parentIndent: block.indent || "",
+      parentBlockId: block.id,
       indent: (block.indent || "") + "  "
     });
     return;
