@@ -1576,6 +1576,42 @@ function shiftHeadingSubtree(
   return output;
 }
 
+function owningHeadingForBlock(target: MarkdownBlock, blocks: MarkdownBlock[]) {
+  let owner: MarkdownBlock | null = null;
+
+  for (const candidate of blocks) {
+    if (candidate.type !== "heading" || candidate.id === target.id) continue;
+
+    const range = blockMoveRange(candidate, blocks);
+    if (target.start <= candidate.start || target.start >= range.end) continue;
+
+    if (
+      !owner ||
+      (candidate.level || 1) > (owner.level || 1) ||
+      ((candidate.level || 1) === (owner.level || 1) && candidate.start > owner.start)
+    ) {
+      owner = candidate;
+    }
+  }
+
+  return owner;
+}
+
+function desiredHeadingLevelForDrop(
+  target: MarkdownBlock,
+  mode: DropMode,
+  blocks: MarkdownBlock[]
+) {
+  if (target.type === "heading") {
+    return mode === "inside"
+      ? Math.min(6, (target.level || 1) + 1)
+      : (target.level || 1);
+  }
+
+  const owner = owningHeadingForBlock(target, blocks);
+  return owner ? Math.min(6, (owner.level || 1) + 1) : 1;
+}
+
 async function moveBlock(sourceId: string, targetId: string, mode: DropMode) {
   const blocks = parseMarkdownBlocks(currentContent);
   const source = blocks.find(block => block.id === sourceId);
@@ -1594,10 +1630,8 @@ async function moveBlock(sourceId: string, targetId: string, mode: DropMode) {
 
   let moving = currentContent.slice(sourceRange.start, sourceRange.end);
 
-  if (source.type === "heading" && target.type === "heading") {
-    const desiredLevel = mode === "inside"
-      ? Math.min(6, (target.level || 1) + 1)
-      : (target.level || 1);
+  if (source.type === "heading") {
+    const desiredLevel = desiredHeadingLevelForDrop(target, mode, blocks);
     moving = shiftHeadingSubtree(moving, source, sourceRange, blocks, desiredLevel);
   }
 
