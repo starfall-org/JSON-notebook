@@ -968,3 +968,44 @@ body.dragging-block .block-action[data-action="move"]{cursor:grabbing}
     padding-right:54px
   }
 }
+
+
+/* Drag feedback: only the active source and the exact resolved target are emphasized. */
+body.dragging-block .managed-block:not(.drag-source):not(.drop-before):not(.drop-inside):not(.drop-after){
+  outline:none;
+  box-shadow:none
+}
+.managed-block.drop-inside{
+  outline:4px solid var(--drop) !important;
+  outline-offset:3px;
+  background:color-mix(in srgb,var(--drop) 12%,var(--panel)) !important;
+  box-shadow:0 0 0 6px color-mix(in srgb,var(--drop) 10%,transparent),
+             inset 0 0 0 2px color-mix(in srgb,var(--drop) 30%,transparent) !important
+}
+.managed-block.drop-before,
+.managed-block.drop-after{
+  outline:2px solid color-mix(in srgb,var(--drop) 55%,transparent) !important;
+  outline-offset:2px
+}
+.managed-block.drop-inside::after{content:"DROP INSIDE"}
+.managed-block.drop-before::after{content:"DROP BEFORE"}
+.managed-block.drop-after::after{content:"DROP AFTER"}
+
+/* Copy is part of the code block, not a separate bordered control. */
+.code-copy-always{
+  top:8px;
+  right:8px;
+  bottom:auto;
+  transform:none;
+  border:0;
+  box-shadow:none;
+  background:color-mix(in srgb,var(--code-bg) 82%,var(--panel2));
+  color:var(--muted)
+}
+.code-copy-always:hover,
+.code-copy-always:active{
+  border:0;
+  box-shadow:none;
+  background:var(--action-hover);
+  color:var(--strong)
+}

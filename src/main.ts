@@ -1348,71 +1348,108 @@ function resolveDropTarget(x: number, y: number, sourceId: string): ResolvedDrop
     block.id !== sourceId &&
     !(block.start >= sourceRange.start && block.start < sourceRange.end);
 
-  const resolveElement = (element: HTMLElement | null) => {
-    if (!element) return null;
-    const id = element.dataset.sourceBlock;
-    const block = id ? byId.get(id) : undefined;
-    if (!id || !block || !isAllowed(block)) return null;
-    return { id, block, element };
-  };
+  const candidates = [...document.querySelectorAll<HTMLElement>("[data-source-block]")]
+    .map(element => {
+      const id = element.dataset.sourceBlock || "";
+      const block = byId.get(id);
+      if (!block || !isAllowed(block)) return null;
 
-  const hits = document.elementsFromPoint(x, y);
+      const rect = element.getBoundingClientRect();
+      const containsPoint =
+        x >= rect.left &&
+        x <= rect.right &&
+        y >= rect.top &&
+        y <= rect.bottom;
 
-  // Anywhere physically inside a branch container is an INSIDE drop.
-  for (const hit of hits) {
-    const headingElement = hit.closest<HTMLElement>(".heading-block[data-source-block]");
-    const resolved = resolveElement(headingElement);
-    if (resolved?.block.type === "heading") {
-      return { id: resolved.id, mode: "inside", element: resolved.element };
-    }
-  }
+      if (!containsPoint || rect.width < 2 || rect.height < 2) return null;
 
-  // A code block dropped anywhere inside an item belongs to that item.
-  if (source.type === "code") {
-    for (const hit of hits) {
-      const itemElement = hit.closest<HTMLElement>(".item-block[data-source-block]");
-      const resolved = resolveElement(itemElement);
-      if (resolved?.block.type === "item") {
-        return { id: resolved.id, mode: "inside", element: resolved.element };
+      let depth = 0;
+      let parent: HTMLElement | null = element.parentElement;
+      while (parent) {
+        if (parent.matches?.("[data-source-block]")) depth += 1;
+        parent = parent.parentElement;
       }
+
+      return {
+        id,
+        block,
+        element,
+        rect,
+        depth,
+        area: rect.width * rect.height
+      };
+    })
+    .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate))
+    .sort((a, b) => b.depth - a.depth || a.area - b.area);
+
+  const direct = candidates[0];
+
+  if (direct) {
+    if (direct.block.type === "heading") {
+      return {
+        id: direct.id,
+        mode: "inside",
+        element: direct.element
+      };
     }
-  }
 
-  // Other direct hits use their upper/lower half.
-  const seen = new Set<HTMLElement>();
-  for (const hit of hits) {
-    const element = hit.closest<HTMLElement>("[data-source-block]");
-    if (!element || seen.has(element)) continue;
-    seen.add(element);
+    if (
+      direct.block.type === "item" &&
+      (source.type === "code" || source.type === "other")
+    ) {
+      return {
+        id: direct.id,
+        mode: "inside",
+        element: direct.element
+      };
+    }
 
-    const resolved = resolveElement(element);
-    if (!resolved) continue;
+    const edgeBand = Math.min(
+      window.matchMedia("(pointer: coarse)").matches ? 34 : 24,
+      Math.max(10, direct.rect.height * 0.28)
+    );
 
-    const rect = element.getBoundingClientRect();
+    if (y <= direct.rect.top + edgeBand) {
+      return {
+        id: direct.id,
+        mode: "before",
+        element: direct.element
+      };
+    }
+
+    if (y >= direct.rect.bottom - edgeBand) {
+      return {
+        id: direct.id,
+        mode: "after",
+        element: direct.element
+      };
+    }
+
     return {
-      id: resolved.id,
-      mode: y < rect.top + rect.height / 2 ? "before" : "after",
-      element
+      id: direct.id,
+      mode: y < direct.rect.top + direct.rect.height / 2 ? "before" : "after",
+      element: direct.element
     };
   }
 
-  // BEFORE/AFTER only exist in the empty gap outside a container.
-  const edgeGap = window.matchMedia("(pointer: coarse)").matches ? 24 : 18;
+  // Only use BEFORE/AFTER when the pointer is in the gap outside every block.
+  const edgeGap = window.matchMedia("(pointer: coarse)").matches ? 28 : 20;
   let edgeTarget: {
     id: string;
     mode: DropMode;
     element: HTMLElement;
     distance: number;
-    width: number;
+    depth: number;
   } | null = null;
 
   for (const element of document.querySelectorAll<HTMLElement>("[data-source-block]")) {
-    const resolved = resolveElement(element);
-    if (!resolved) continue;
+    const id = element.dataset.sourceBlock || "";
+    const block = byId.get(id);
+    if (!block || !isAllowed(block)) continue;
 
     const rect = element.getBoundingClientRect();
     if (rect.width < 2 || rect.height < 2) continue;
-    if (x < rect.left - 10 || x > rect.right + 10) continue;
+    if (x < rect.left || x > rect.right) continue;
 
     let mode: DropMode | null = null;
     let distance = Infinity;
@@ -1427,28 +1464,25 @@ function resolveDropTarget(x: number, y: number, sourceId: string): ResolvedDrop
 
     if (!mode) continue;
 
+    let depth = 0;
+    let parent: HTMLElement | null = element.parentElement;
+    while (parent) {
+      if (parent.matches?.("[data-source-block]")) depth += 1;
+      parent = parent.parentElement;
+    }
+
     if (
       !edgeTarget ||
       distance < edgeTarget.distance ||
-      (distance === edgeTarget.distance && rect.width < edgeTarget.width)
+      (distance === edgeTarget.distance && depth > edgeTarget.depth)
     ) {
-      edgeTarget = {
-        id: resolved.id,
-        mode,
-        element,
-        distance,
-        width: rect.width
-      };
+      edgeTarget = { id, mode, element, distance, depth };
     }
   }
 
-  if (!edgeTarget) return null;
-
-  return {
-    id: edgeTarget.id,
-    mode: edgeTarget.mode,
-    element: edgeTarget.element
-  };
+  return edgeTarget
+    ? { id: edgeTarget.id, mode: edgeTarget.mode, element: edgeTarget.element }
+    : null;
 }
 
 function bindMoveHandles() {
