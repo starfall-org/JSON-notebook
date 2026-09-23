@@ -233,6 +233,28 @@ function sidebarVisibleEntries(children: DriveEntry[]) {
     });
 }
 
+function cachedVisibleFolderEntries(folderId: string) {
+  const cached = readJsonCache<FolderCacheRecord>(visibleFolderCacheKey(folderId));
+  return cached && Array.isArray(cached.entries)
+    ? sidebarVisibleEntries(cached.entries)
+    : null;
+}
+
+function sidebarEntriesForFolder(folderId: string) {
+  const filtered = cachedVisibleFolderEntries(folderId);
+  if (filtered) return filtered;
+
+  const raw = cachedFolderChildren(folderId);
+  if (!raw) return null;
+
+  return sidebarVisibleEntries(raw).filter(entry => {
+    if (entry.mimeType !== FOLDER_MIME) return true;
+
+    const childFiltered = cachedVisibleFolderEntries(entry.id);
+    return childFiltered === null || childFiltered.length > 0;
+  });
+}
+
 function slug(value: string) {
   return value
     .replace(/\.md$/i, "")
@@ -2071,14 +2093,12 @@ function bindDocumentActions() {
 }
 
 function sidebarTreeHtml(folderId: string, depth = 0): string {
-  const children = cachedFolderChildren(folderId);
-  if (!children) {
+  const visible = sidebarEntriesForFolder(folderId);
+  if (!visible) {
     return '<div class="sidebar-status" style="--depth:' + depth + '">' +
       (sidebarLoading.has(folderId) ? 'Loading…' : 'Not loaded') +
     '</div>';
   }
-
-  const visible = sidebarVisibleEntries(children);
 
   if (!visible.length) {
     return '<div class="sidebar-status" style="--depth:' + depth + '">Empty</div>';
@@ -2167,7 +2187,16 @@ async function refreshSidebarFolder(folderId: string) {
   updateSidebarTree();
 
   try {
-    await directChildren(folderId);
+    const folder: DriveEntry = {
+      id: folderId,
+      name: "",
+      mimeType: FOLDER_MIME
+    };
+    const visible = await buildVisibleFolderListing(folder);
+    writeJsonCache(visibleFolderCacheKey(folderId), {
+      updatedAt: Date.now(),
+      entries: visible
+    } satisfies FolderCacheRecord);
   } catch (error) {
     console.error("Sidebar refresh failed", error);
   } finally {
@@ -2177,7 +2206,7 @@ async function refreshSidebarFolder(folderId: string) {
 }
 
 async function ensureSidebarFolder(folderId: string) {
-  if (cachedFolderChildren(folderId)) {
+  if (cachedVisibleFolderEntries(folderId) || cachedFolderChildren(folderId)) {
     updateSidebarTree();
     return;
   }
