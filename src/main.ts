@@ -2166,6 +2166,95 @@ function bindMobileBlockActivation() {
     });
   });
 }
+function toolbarForManagedBlock(block: HTMLElement) {
+  if (block.classList.contains("heading-block")) {
+    return block.querySelector<HTMLElement>(":scope > .branch-head > .block-actions");
+  }
+  if (block.classList.contains("item-block")) {
+    return block.querySelector<HTMLElement>(":scope > .item-head > .block-actions");
+  }
+  if (block.classList.contains("code-shell")) {
+    return block.querySelector<HTMLElement>(":scope > .code-actions");
+  }
+  return block.querySelector<HTMLElement>(":scope > .block-actions");
+}
+
+let stickyToolbarFrame = 0;
+
+function updateStickyBlockToolbar() {
+  stickyToolbarFrame = 0;
+
+  const blocks = [...document.querySelectorAll<HTMLElement>(".managed-block")];
+  const clear = () => {
+    for (const block of blocks) {
+      block.classList.remove("toolbar-stuck");
+      const toolbar = toolbarForManagedBlock(block);
+      toolbar?.style.removeProperty("--sticky-toolbar-top");
+      toolbar?.style.removeProperty("--sticky-toolbar-right");
+    }
+  };
+
+  const header = document.querySelector<HTMLElement>(".doc-topbar");
+  if (!header || document.body.classList.contains("dragging-block")) {
+    clear();
+    return;
+  }
+
+  const stickyTop = Math.ceil(header.getBoundingClientRect().bottom + 4);
+  const availableHeight = Math.max(1, window.innerHeight - stickyTop);
+
+  const candidates = blocks
+    .map(block => {
+      const toolbar = toolbarForManagedBlock(block);
+      if (!toolbar) return null;
+
+      const rect = block.getBoundingClientRect();
+      if (
+        rect.top >= stickyTop ||
+        rect.bottom <= stickyTop + 8 ||
+        rect.height <= availableHeight
+      ) {
+        return null;
+      }
+
+      let depth = 0;
+      let parent = block.parentElement;
+      while (parent) {
+        if (parent.classList.contains("managed-block")) depth += 1;
+        parent = parent.parentElement;
+      }
+
+      return { block, toolbar, rect, depth };
+    })
+    .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate))
+    .sort((a, b) => b.depth - a.depth || a.rect.height - b.rect.height);
+
+  const selected = candidates[0] || null;
+
+  for (const block of blocks) {
+    if (block !== selected?.block) {
+      block.classList.remove("toolbar-stuck");
+      const toolbar = toolbarForManagedBlock(block);
+      toolbar?.style.removeProperty("--sticky-toolbar-top");
+      toolbar?.style.removeProperty("--sticky-toolbar-right");
+    }
+  }
+
+  if (!selected) return;
+
+  const inset = window.matchMedia("(pointer: coarse)").matches ? 6 : 8;
+  const right = Math.max(inset, Math.round(window.innerWidth - selected.rect.right + inset));
+
+  selected.block.classList.add("toolbar-stuck");
+  selected.toolbar.style.setProperty("--sticky-toolbar-top", stickyTop + "px");
+  selected.toolbar.style.setProperty("--sticky-toolbar-right", right + "px");
+}
+
+function scheduleStickyBlockToolbar() {
+  if (stickyToolbarFrame) return;
+  stickyToolbarFrame = requestAnimationFrame(updateStickyBlockToolbar);
+}
+
 function bindDocumentActions() {
   document.querySelectorAll<HTMLButtonElement>("[data-action]").forEach(button => {
     button.addEventListener("click", async () => {
@@ -2207,6 +2296,7 @@ function bindDocumentActions() {
 
   bindMoveHandles();
   bindMobileBlockActivation();
+  scheduleStickyBlockToolbar();
 
   requestAnimationFrame(() => {
     const editor = document.querySelector<HTMLInputElement | HTMLTextAreaElement>("[data-edit-value]");
@@ -2523,6 +2613,9 @@ document.addEventListener("keydown", event => {
     document.querySelector<HTMLInputElement>("#search")?.focus();
   }
 });
+window.addEventListener("scroll", scheduleStickyBlockToolbar, { passive: true });
+window.addEventListener("resize", scheduleStickyBlockToolbar, { passive: true });
+
 document.addEventListener("pointerdown", event => {
   const target = event.target as HTMLElement | null;
   if (!target || target.closest(".managed-block,.block-editor")) return;

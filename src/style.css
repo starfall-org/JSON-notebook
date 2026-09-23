@@ -1488,3 +1488,23 @@ body.dragging-block .managed-block:not(.drag-source):not(.drop-before):not(.drop
     right:6px
   }
 }
+
+
+/* Keep the toolbar for the current long block pinned below the file header. */
+.managed-block.toolbar-stuck>.branch-head>.block-actions,
+.managed-block.toolbar-stuck>.item-head>.block-actions,
+.managed-block.toolbar-stuck.raw-block>.block-actions,
+.managed-block.toolbar-stuck.code-shell>.code-actions,
+.managed-block.toolbar-stuck.divider-block>.block-actions{
+  position:fixed !important;
+  top:var(--sticky-toolbar-top) !important;
+  right:var(--sticky-toolbar-right) !important;
+  bottom:auto !important;
+  z-index:30 !important;
+  margin:0 !important;
+  transform:none !important;
+  opacity:1 !important;
+  pointer-events:auto !important;
+  border-color:var(--line) !important;
+  background:var(--action-bg) !important
+}
