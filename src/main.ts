@@ -770,7 +770,7 @@ function normalizeNestedCodeIndent(source: string) {
       }
 
       const ownerIndent = itemStack[itemStack.length - 1];
-      const wantedIndent = ownerIndent + "    ";
+      const wantedIndent = ownerIndent + "  ";
       const marker = opening[2];
 
       lines[index] = wantedIndent + line.slice(currentIndent.length);
@@ -803,7 +803,8 @@ async function formatMarkdown(source: string) {
     import("prettier/standalone"),
     import("prettier/plugins/markdown")
   ]);
-  const formatted = await prettier.format(source, {
+  const normalizedSource = normalizeNestedCodeIndent(source);
+  const formatted = await prettier.format(normalizedSource, {
     parser: "markdown",
     plugins: [markdownPlugin],
     proseWrap: "preserve"
@@ -1001,7 +1002,7 @@ function renderCodeFooter(state: EditState) {
   '</div>';
 }
 function renderBlockEditor(state: EditState) {
-  const nested = (state.indent || "").length >= 4 ? " nested-block" : "";
+  const nested = (state.indent || "").length >= 2 ? " nested-block" : "";
 
   if (state.type === "code") {
     return '<div class="block-editor code-editor-block' + nested + '">' +
@@ -1085,7 +1086,7 @@ function renderManagedBlock(block: MarkdownBlock) {
   }
 
   if (block.type === "code") {
-    const nested = (block.indent || "").length >= 4 ? " nested-block" : "";
+    const nested = (block.indent || "").length >= 2 ? " nested-block" : "";
     const language = (block.language || "").trim();
     const languageClass = language
       ? "language-" + language.replace(/[^a-zA-Z0-9_-]+/g, "-")
@@ -1427,7 +1428,7 @@ function setContentMode(kind: "code" | "other") {
   editing.type = kind;
 
   if (editing.parentIndent !== undefined) {
-    editing.indent = editing.parentIndent + (kind === "code" ? "    " : "  ");
+    editing.indent = editing.parentIndent + "  ";
   } else {
     editing.indent = "";
   }
@@ -1474,7 +1475,7 @@ function handleBlockAction(action: string, blockId: string) {
     const range = blockMoveRange(block, blocks);
     startNewBlock("code", range.end, {
       parentIndent: block.indent || "",
-      indent: (block.indent || "") + "    "
+      indent: (block.indent || "") + "  "
     });
     return;
   }
@@ -1506,7 +1507,7 @@ function blockMoveRange(block: MarkdownBlock, blocks: MarkdownBlock[]) {
   }
   if (block.type === "item") {
     const baseIndent = (block.indent || "").length;
-    const minimumCodeIndent = baseIndent + 4;
+    const minimumCodeIndent = baseIndent + 2;
     const minimumRawIndent = baseIndent + 2;
     let end = block.end;
     let indexAfter = index + 1;
@@ -1671,9 +1672,9 @@ async function moveBlock(sourceId: string, targetId: string, mode: DropMode) {
 
     const targetIndent =
       mode === "inside" && target.type === "item"
-        ? (target.indent || "") + "    "
+        ? (target.indent || "") + "  "
         : owningItem
-          ? (owningItem.indent || "") + "    "
+          ? (owningItem.indent || "") + "  "
           : "";
 
     moving = reindentCodeSource(moving, source.indent || "", targetIndent);
