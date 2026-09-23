@@ -558,6 +558,8 @@ async function readFile(file: DriveEntry) {
 }
 
 async function refreshOpenedFile(file: DriveEntry) {
+  if (fileSaveQueues.has(file.id)) return;
+
   try {
     const fresh = await readFile(file);
     syncedContentByFile.set(file.id, fresh);
