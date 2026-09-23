@@ -897,3 +897,70 @@ body.dragging-block .block-action[data-action="move"]{cursor:grabbing}
 .code-shell:has(.code-language-label) pre{
   padding-bottom:14px
 }
+
+
+/* Icon-only theme picker. */
+.theme-buttons{
+  display:flex;
+  align-items:center;
+  gap:2px;
+  padding:2px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--panel)
+}
+.theme-buttons .theme-btn{
+  width:32px;
+  height:32px;
+  border-radius:7px
+}
+.theme-buttons .theme-btn.active{
+  background:var(--strong);
+  color:var(--inverse)
+}
+@media(max-width:420px){
+  .theme-buttons{
+    gap:0;
+    padding:1px
+  }
+  .theme-buttons .theme-btn{
+    width:30px;
+    height:32px
+  }
+  .root-controls{
+    gap:2px
+  }
+}
+
+/* Copy is pinned to the inside-right edge and vertically centered. */
+.code-copy-always{
+  right:2px;
+  top:50%;
+  bottom:auto;
+  transform:translateY(-50%)
+}
+@media(pointer:coarse){
+  .code-copy-always{
+    right:2px;
+    top:50%;
+    bottom:auto;
+    transform:translateY(-50%)
+  }
+}
+
+
+/* Copy button: inside-right and vertically centered. */
+.code-copy-always{
+  top:50%;
+  right:2px;
+  bottom:auto;
+  transform:translateY(-50%)
+}
+@media(pointer:coarse){
+  .code-copy-always{
+    top:50%;
+    right:2px;
+    bottom:auto;
+    transform:translateY(-50%)
+  }
+}

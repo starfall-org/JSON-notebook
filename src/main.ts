@@ -109,6 +109,9 @@ const icons = {
   search: svg('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.7-3.7"/>'),
   settings: svg('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/>'),
   logout: svg('<path d="M10 5H5v14h5M14 8l4 4-4 4M18 12H9"/>'),
+  themeSystem: svg('<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>'),
+  themeLight: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>'),
+  themeDark: svg('<path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.7 8.7 0 1 0 20.5 14.2Z"/>'),
   branch: svg('<path d="M6 3v12a4 4 0 0 0 4 4h2"/><circle cx="6" cy="3" r="2"/><circle cx="16" cy="7" r="2"/><circle cx="14" cy="19" r="2"/><path d="M8 9h4a4 4 0 0 0 4-4"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
   code: svg('<path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/>'),
@@ -453,11 +456,11 @@ function renderFolder() {
         '<div class="folder-name">' + esc(folderTitle) + '</div>' +
         (isRoot
           ? '<div class="root-controls">' +
-              '<select class="theme-select" id="theme-mode" aria-label="Theme">' +
-                '<option value="system"' + (theme === "system" ? " selected" : "") + '>System</option>' +
-                '<option value="light"' + (theme === "light" ? " selected" : "") + '>Light</option>' +
-                '<option value="dark"' + (theme === "dark" ? " selected" : "") + '>Dark</option>' +
-              '</select>' +
+              '<div class="theme-buttons" role="group" aria-label="Theme">' +
+                '<button class="icon-btn ghost theme-btn' + (theme === "system" ? " active" : "") + '" type="button" data-theme-mode="system" title="System theme" aria-label="System theme">' + icons.themeSystem + '</button>' +
+                '<button class="icon-btn ghost theme-btn' + (theme === "light" ? " active" : "") + '" type="button" data-theme-mode="light" title="Light theme" aria-label="Light theme">' + icons.themeLight + '</button>' +
+                '<button class="icon-btn ghost theme-btn' + (theme === "dark" ? " active" : "") + '" type="button" data-theme-mode="dark" title="Dark theme" aria-label="Dark theme">' + icons.themeDark + '</button>' +
+              '</div>' +
               '<button class="icon-btn ghost" id="logout" title="Logout" aria-label="Logout">' + icons.logout + '</button>' +
             '</div>'
           : '<span class="topbar-spacer"></span>') +
@@ -481,9 +484,13 @@ function renderFolder() {
     if (route) navigate(route);
   });
 
-  document.querySelector<HTMLSelectElement>("#theme-mode")?.addEventListener("change", event => {
-    const value = (event.currentTarget as HTMLSelectElement).value;
-    if (value === "system" || value === "light" || value === "dark") applyTheme(value);
+  document.querySelectorAll<HTMLButtonElement>("[data-theme-mode]").forEach(button => {
+    button.addEventListener("click", () => {
+      const value = button.dataset.themeMode;
+      if (value !== "system" && value !== "light" && value !== "dark") return;
+      applyTheme(value);
+      renderFolder();
+    });
   });
 
   document.querySelector("#logout")?.addEventListener("click", () => {
