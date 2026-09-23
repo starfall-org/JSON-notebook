@@ -1052,3 +1052,411 @@ body.dragging-block .managed-block:not(.drag-source):not(.drop-before):not(.drop
   .raw-block>.block-actions,
   .code-shell>.code-actions{top:0}
 }
+
+
+/* Code language belongs to the code toolbar and shares its visibility. */
+.code-shell>.code-actions>.code-language-label{
+  position:static;
+  left:auto;
+  bottom:auto;
+  z-index:auto;
+  max-width:120px;
+  display:inline-flex;
+  align-items:center;
+  height:28px;
+  flex:0 1 auto;
+  padding:0 7px;
+  border:0;
+  border-right:1px solid var(--line);
+  border-radius:0;
+  background:transparent;
+  color:var(--muted);
+  font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace
+}
+.code-shell:has(.code-language-label) pre{
+  padding-bottom:14px
+}
+
+/* Lazy file sidebar. */
+.doc-page{
+  min-height:100dvh;
+  display:grid;
+  grid-template-columns:260px minmax(0,1fr)
+}
+.file-sidebar{
+  position:sticky;
+  top:0;
+  z-index:12;
+  height:100dvh;
+  overflow:auto;
+  padding:max(10px,env(safe-area-inset-top)) 8px max(16px,env(safe-area-inset-bottom));
+  border-right:1px solid var(--line);
+  background:var(--panel)
+}
+.sidebar-title{
+  min-height:42px;
+  display:flex;
+  align-items:center;
+  padding:0 10px;
+  font-size:13px;
+  font-weight:750;
+  color:var(--strong)
+}
+.sidebar-tree{padding:4px 0}
+.sidebar-node{min-width:0}
+.sidebar-row{
+  --depth:0;
+  width:100%;
+  min-height:36px;
+  display:flex;
+  align-items:center;
+  gap:7px;
+  padding:4px 8px 4px calc(7px + var(--depth) * 14px);
+  border:0;
+  border-radius:7px;
+  background:transparent;
+  color:var(--text);
+  text-decoration:none;
+  text-align:left
+}
+.sidebar-row:hover{background:var(--hover)}
+.sidebar-row.current{
+  background:var(--action-hover);
+  color:var(--strong);
+  font-weight:700
+}
+.sidebar-chevron,
+.sidebar-entry-icon{
+  display:grid;
+  place-items:center;
+  flex:0 0 auto;
+  color:var(--muted)
+}
+.sidebar-chevron{width:15px;transition:transform .12s ease}
+.sidebar-folder.expanded>.sidebar-chevron{transform:rotate(90deg)}
+.sidebar-chevron.placeholder{visibility:hidden}
+.sidebar-chevron svg{width:13px;height:13px}
+.sidebar-entry-icon svg{width:15px;height:15px}
+.sidebar-entry-name{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:12px
+}
+.sidebar-status{
+  --depth:0;
+  padding:7px 8px 7px calc(44px + var(--depth) * 14px);
+  color:var(--muted);
+  font-size:11px
+}
+.sidebar-backdrop{display:none}
+.doc-nav{display:flex;align-items:center;gap:2px}
+.doc-page .doc-topbar{grid-template-columns:auto minmax(0,1fr) auto}
+
+@media(min-width:801px){
+  .sidebar-toggle{display:none}
+}
+
+@media(max-width:800px){
+  .doc-page{display:block}
+  .file-sidebar{
+    position:fixed;
+    left:0;
+    top:0;
+    z-index:40;
+    width:min(84vw,320px);
+    transform:translateX(-102%);
+    transition:transform .18s ease;
+    box-shadow:var(--shadow)
+  }
+  .file-sidebar.open{transform:translateX(0)}
+  .sidebar-backdrop{
+    position:fixed;
+    inset:0;
+    z-index:35;
+    display:block;
+    border:0;
+    padding:0;
+    background:var(--backdrop);
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .18s ease
+  }
+  .sidebar-backdrop.show{
+    opacity:1;
+    pointer-events:auto
+  }
+  .doc-page .doc-topbar{
+    grid-template-columns:auto minmax(0,1fr) auto
+  }
+  .doc-nav .icon-btn{
+    width:36px;
+    height:40px
+  }
+}
+
+@media(max-width:420px){
+  .doc-page .doc-topbar{
+    grid-template-columns:auto minmax(0,1fr) auto
+  }
+  .doc-nav{gap:0}
+  .doc-nav .icon-btn{
+    width:32px;
+    height:38px
+  }
+}
+
+
+/* Sidebar file tree */
+.doc-page{
+  min-height:100dvh;
+  display:grid;
+  grid-template-columns:260px minmax(0,1fr)
+}
+.file-sidebar{
+  position:sticky;
+  top:0;
+  z-index:12;
+  height:100dvh;
+  overflow:auto;
+  border-right:1px solid var(--line);
+  background:var(--panel);
+  padding:max(10px,env(safe-area-inset-top)) 8px max(12px,env(safe-area-inset-bottom))
+}
+.sidebar-title{
+  min-height:42px;
+  display:flex;
+  align-items:center;
+  padding:0 10px;
+  color:var(--strong);
+  font-size:13px;
+  font-weight:750
+}
+.sidebar-tree{padding:4px 0}
+.sidebar-row{
+  width:100%;
+  min-height:36px;
+  display:flex;
+  align-items:center;
+  gap:7px;
+  padding:0 8px 0 calc(8px + (var(--depth,0) * 16px));
+  border:0;
+  border-radius:7px;
+  background:transparent;
+  color:var(--text);
+  text-decoration:none;
+  text-align:left;
+  font:600 12px/1.2 inherit
+}
+.sidebar-row:hover{background:var(--hover)}
+.sidebar-row.current{background:var(--action-hover);color:var(--strong)}
+.sidebar-chevron,.sidebar-entry-icon{
+  flex:0 0 auto;
+  display:grid;
+  place-items:center;
+  color:var(--muted)
+}
+.sidebar-chevron{width:14px;height:14px;transition:transform .12s ease}
+.sidebar-chevron svg{width:13px;height:13px}
+.sidebar-folder.expanded>.sidebar-chevron{transform:rotate(90deg)}
+.sidebar-chevron.placeholder{visibility:hidden}
+.sidebar-entry-icon svg{width:15px;height:15px}
+.sidebar-entry-name{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap
+}
+.sidebar-status{
+  min-height:30px;
+  display:flex;
+  align-items:center;
+  padding-left:calc(44px + (var(--depth,0) * 16px));
+  color:var(--muted);
+  font-size:11px
+}
+.sidebar-backdrop{display:none}
+.doc-nav{display:flex;align-items:center;gap:0}
+.sidebar-toggle{display:none}
+.doc-page>.doc-shell{width:min(900px,100%)}
+
+@media(max-width:800px){
+  .doc-page{display:block}
+  .file-sidebar{
+    position:fixed;
+    left:0;
+    top:0;
+    z-index:40;
+    width:min(82vw,300px);
+    transform:translateX(-104%);
+    transition:transform .18s ease;
+    box-shadow:var(--shadow)
+  }
+  .file-sidebar.open{transform:translateX(0)}
+  .sidebar-backdrop{
+    position:fixed;
+    inset:0;
+    z-index:39;
+    display:block;
+    opacity:0;
+    pointer-events:none;
+    border:0;
+    background:var(--backdrop);
+    transition:opacity .18s ease
+  }
+  .sidebar-backdrop.show{opacity:1;pointer-events:auto}
+  .sidebar-toggle{display:inline-grid}
+  .doc-topbar{grid-template-columns:auto minmax(0,1fr) auto}
+}
+
+/* Language tag shares the code toolbar visibility and sits on the top frame. */
+.code-language-label{
+  left:8px;
+  top:0;
+  bottom:auto;
+  transform:translateY(-50%);
+  opacity:0;
+  pointer-events:none;
+  background:var(--action-bg);
+  transition:opacity .12s ease
+}
+@media(hover:hover){
+  .code-shell:hover>.code-language-label,
+  .code-shell:focus-within>.code-language-label{
+    opacity:1
+  }
+}
+@media(hover:none){
+  .code-shell.active-block>.code-language-label{
+    opacity:1
+  }
+}
+
+
+/* Edit actions use the same top-edge toolbar placement as normal blocks. */
+.block-editor>.edit-actions{
+  position:absolute;
+  top:0;
+  right:8px;
+  bottom:auto;
+  z-index:6;
+  margin:0;
+  padding:3px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:var(--action-bg);
+  transform:translateY(-50%)
+}
+.code-editor-block .edit-actions{
+  position:absolute;
+  top:0;
+  right:8px;
+  bottom:auto;
+  margin:0;
+  padding:3px;
+  border-radius:9px;
+  background:var(--action-bg);
+  transform:translateY(-50%)
+}
+@media(hover:none){
+  .block-editor>.edit-actions,
+  .code-editor-block .edit-actions{
+    right:6px
+  }
+}
+
+
+/* Edit controls use the same top-frame toolbar placement as rendered blocks. */
+.block-editor>.edit-actions,
+.code-editor-footer{
+  position:absolute;
+  top:0;
+  right:8px;
+  bottom:auto;
+  z-index:8;
+  margin:0;
+  transform:translateY(-50%);
+  padding:3px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:var(--action-bg)
+}
+.code-editor-footer{
+  left:auto;
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:6px;
+  pointer-events:auto
+}
+.code-editor-footer .edit-actions{
+  position:static;
+  margin:0;
+  padding:0;
+  border:0;
+  background:transparent;
+  transform:none
+}
+.raw-editor-block>.edit-actions{
+  top:0
+}
+.heading-editor-block>.edit-actions,
+.item-editor-block>.edit-actions{
+  top:0
+}
+@media(max-width:420px){
+  .block-editor>.edit-actions,
+  .code-editor-footer{
+    top:0;
+    right:6px;
+    bottom:auto;
+    transform:translateY(-50%)
+  }
+  .code-editor-footer{
+    left:auto
+  }
+}
+
+
+/* Language badge is part of the code toolbar; parent toolbar controls visibility. */
+.code-shell>.code-actions>.code-language-label{
+  position:static;
+  inset:auto;
+  transform:none;
+  opacity:1;
+  pointer-events:none;
+  background:transparent
+}
+
+
+/* Markdown thematic breaks are standalone structural blocks. */
+.divider-block{
+  position:relative;
+  margin:16px 0;
+  padding:4px 0
+}
+.divider-block hr{
+  margin:0;
+  border:0;
+  border-top:1px solid var(--line2)
+}
+.divider-block>.block-actions{
+  position:absolute;
+  top:50%;
+  right:8px;
+  z-index:5;
+  transform:translateY(-50%)
+}
+@media(hover:hover){
+  .divider-block:hover>.block-actions{
+    opacity:1;
+    pointer-events:auto
+  }
+}
+@media(hover:none){
+  .divider-block.active-block>.block-actions{
+    opacity:1;
+    pointer-events:auto
+  }
+}

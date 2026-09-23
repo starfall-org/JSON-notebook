@@ -30,7 +30,7 @@ type DemoNode = {
 
 type MarkdownBlock = {
   id: string;
-  type: "heading" | "item" | "code" | "other";
+  type: "heading" | "item" | "code" | "other" | "divider";
   start: number;
   end: number;
   raw: string;
@@ -70,6 +70,10 @@ const demo = new URLSearchParams(location.search).has("demo");
 const fence = String.fromCharCode(96).repeat(3);
 const SESSION_KEY = "secret-keep.google-session";
 const THEME_KEY = "secret-keep.theme";
+const FOLDER_CACHE_PREFIX = "secrets-keep.folder-cache.v1:";
+const FOLDER_VISIBLE_CACHE_PREFIX = "secrets-keep.folder-visible-cache.v1:";
+const CACHE_REFRESH_MS = 30_000;
+const FILE_CACHE_PREFIX = "secrets-keep.file-cache.v1:";
 
 type ThemeMode = "system" | "light" | "dark";
 type StoredSession = {
@@ -86,6 +90,14 @@ let currentFile: DriveEntry | null = null;
 let editing: EditState | null = null;
 let currentContent = "";
 let filter = "";
+const sidebarChildrenCache = new Map<string, DriveEntry[]>();
+const sidebarCacheUpdatedAt = new Map<string, number>();
+const sidebarExpanded = new Set<string>();
+const sidebarLoading = new Set<string>();
+let sidebarOpen = false;
+const fileSaveQueues = new Map<string, Promise<void>>();
+const syncedContentByFile = new Map<string, string>();
+const fileContentCache = new Map<string, string>();
 
 const demoNodes: DemoNode[] = [
   { id: "demo-root", name: "secrets", mimeType: FOLDER_MIME, parentId: null, modifiedTime: new Date().toISOString() },
@@ -102,6 +114,8 @@ const svg = (body: string) =>
 
 const icons = {
   back: svg('<path d="m15 18-6-6 6-6"/>'),
+  menu: svg('<path d="M4 6h16M4 12h16M4 18h16"/>'),
+  chevron: svg('<path d="m9 18 6-6-6-6"/>'),
   edit: svg('<path d="m4 20 4.2-1 10.9-10.9a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m14.5 6.5 3 3"/>'),
   file: svg('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/>'),
   folder: svg('<path d="M3 6h7l2 2h9v11H3z"/>'),
@@ -125,6 +139,98 @@ function esc(value: string) {
   const element = document.createElement("div");
   element.textContent = value;
   return element.innerHTML;
+}
+function readJsonCache<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) as T : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeJsonCache(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage quota/private mode should not block the app.
+  }
+}
+function folderCacheKey(folderId: string) {
+  return FOLDER_CACHE_PREFIX + folderId;
+}
+
+function visibleFolderCacheKey(folderId: string) {
+  return FOLDER_VISIBLE_CACHE_PREFIX + folderId;
+}
+
+type FolderCacheRecord = {
+  updatedAt: number;
+  entries: DriveEntry[];
+};
+
+type FileCacheRecord = {
+  updatedAt: number;
+  content: string;
+};
+
+function readCachedChildren(folderId: string): FolderCacheRecord | null {
+  const memory = sidebarChildrenCache.get(folderId);
+  const updatedAt = sidebarCacheUpdatedAt.get(folderId);
+  if (memory && updatedAt !== undefined) {
+    return { updatedAt, entries: memory };
+  }
+
+  const cached = readJsonCache<FolderCacheRecord>(folderCacheKey(folderId));
+  if (!cached || !Array.isArray(cached.entries)) return null;
+
+  sidebarChildrenCache.set(folderId, cached.entries);
+  sidebarCacheUpdatedAt.set(folderId, cached.updatedAt || 0);
+  return cached;
+}
+
+function cachedFolderChildren(folderId: string) {
+  return readCachedChildren(folderId)?.entries || null;
+}
+
+function cacheChildren(folderId: string, entries: DriveEntry[]) {
+  const updatedAt = Date.now();
+  sidebarChildrenCache.set(folderId, entries);
+  sidebarCacheUpdatedAt.set(folderId, updatedAt);
+  writeJsonCache(folderCacheKey(folderId), { updatedAt, entries } satisfies FolderCacheRecord);
+}
+
+function readCachedFile(fileId: string): FileCacheRecord | null {
+  const content = fileContentCache.get(fileId);
+  return content === undefined ? null : { updatedAt: Date.now(), content };
+}
+
+function cacheFile(fileId: string, content: string) {
+  fileContentCache.set(fileId, content);
+}
+
+function clearListingCaches() {
+  sidebarChildrenCache.clear();
+  sidebarCacheUpdatedAt.clear();
+  fileContentCache.clear();
+
+  for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+    const key = localStorage.key(index);
+    if (!key) continue;
+    if (key.startsWith(FOLDER_CACHE_PREFIX) || key.startsWith(FOLDER_VISIBLE_CACHE_PREFIX)) {
+      localStorage.removeItem(key);
+    }
+  }
+}
+
+function sidebarVisibleEntries(children: DriveEntry[]) {
+  return children
+    .filter(entry => entry.mimeType === FOLDER_MIME || entry.name.toLowerCase().endsWith(".md"))
+    .sort((a, b) => {
+      const af = a.mimeType === FOLDER_MIME ? 0 : 1;
+      const bf = b.mimeType === FOLDER_MIME ? 0 : 1;
+      return af - bf || a.name.localeCompare(b.name);
+    });
 }
 
 function slug(value: string) {
@@ -216,6 +322,12 @@ async function logout() {
   currentFolder = null;
   currentFile = null;
   currentContent = "";
+  clearListingCaches();
+  sidebarExpanded.clear();
+  sidebarLoading.clear();
+  syncedContentByFile.clear();
+  fileSaveQueues.clear();
+  sidebarOpen = false;
   history.replaceState({}, "", withDemo("/"));
   renderLogin();
 }
@@ -311,7 +423,7 @@ async function ensureRootFolder() {
 
 async function directChildren(folderId: string): Promise<DriveEntry[]> {
   if (demo) {
-    return demoNodes
+    const children = demoNodes
       .filter(node => node.parentId === folderId)
       .map(node => ({
         id: node.id,
@@ -320,6 +432,8 @@ async function directChildren(folderId: string): Promise<DriveEntry[]> {
         modifiedTime: node.modifiedTime,
         parents: node.parentId ? [node.parentId] : []
       }));
+    cacheChildren(folderId, children);
+    return children;
   }
 
   const children: DriveEntry[] = [];
@@ -339,6 +453,7 @@ async function directChildren(folderId: string): Promise<DriveEntry[]> {
     pageToken = data.nextPageToken || "";
   } while (pageToken);
 
+  cacheChildren(folderId, children);
   return children;
 }
 
@@ -364,9 +479,7 @@ async function folderHasMarkdown(folderId: string, memo = new Map<string, boolea
   return false;
 }
 
-async function listFolder(folder: DriveEntry) {
-  currentFolder = folder;
-
+async function buildVisibleFolderListing(folder: DriveEntry) {
   const children = await directChildren(folder.id);
   const memo = new Map<string, boolean>();
   const visible: DriveEntry[] = [];
@@ -380,19 +493,88 @@ async function listFolder(folder: DriveEntry) {
     if (entry.name.toLowerCase().endsWith(".md")) visible.push(entry);
   }
 
-  entries = visible.sort((a, b) => {
-    const af = a.mimeType === FOLDER_MIME ? 0 : 1;
-    const bf = b.mimeType === FOLDER_MIME ? 0 : 1;
-    return af - bf || a.name.localeCompare(b.name);
-  });
+  return sidebarVisibleEntries(visible);
+}
+
+function sameEntryList(a: DriveEntry[], b: DriveEntry[]) {
+  if (a.length !== b.length) return false;
+  return a.every((entry, index) =>
+    entry.id === b[index]?.id &&
+    entry.name === b[index]?.name &&
+    entry.mimeType === b[index]?.mimeType &&
+    entry.modifiedTime === b[index]?.modifiedTime
+  );
+}
+
+async function refreshFolderListing(folder: DriveEntry) {
+  try {
+    const fresh = await buildVisibleFolderListing(folder);
+    writeJsonCache(visibleFolderCacheKey(folder.id), {
+      updatedAt: Date.now(),
+      entries: fresh
+    } satisfies FolderCacheRecord);
+
+    if (currentFolder?.id === folder.id && !sameEntryList(entries, fresh)) {
+      entries = fresh;
+      renderFolder();
+    }
+  } catch (error) {
+    console.error("Folder refresh failed", error);
+  }
+}
+
+async function listFolder(folder: DriveEntry) {
+  currentFolder = folder;
+
+  const cached = readJsonCache<FolderCacheRecord>(visibleFolderCacheKey(folder.id));
+  if (cached && Array.isArray(cached.entries)) {
+    entries = sidebarVisibleEntries(cached.entries);
+    if (Date.now() - (cached.updatedAt || 0) >= CACHE_REFRESH_MS) {
+      void refreshFolderListing(folder);
+    }
+    return;
+  }
+
+  entries = await buildVisibleFolderListing(folder);
+  writeJsonCache(visibleFolderCacheKey(folder.id), {
+    updatedAt: Date.now(),
+    entries
+  } satisfies FolderCacheRecord);
 }
 
 async function readFile(file: DriveEntry) {
-  if (demo) return demoNodes.find(node => node.id === file.id)?.content || "";
+  if (demo) {
+    const content = demoNodes.find(node => node.id === file.id)?.content || "";
+    cacheFile(file.id, content);
+    return content;
+  }
+
   const response = await api(
     "https://www.googleapis.com/drive/v3/files/" + encodeURIComponent(file.id) + "?alt=media"
   );
-  return response.text();
+  const content = await response.text();
+  cacheFile(file.id, content);
+  return content;
+}
+
+async function refreshOpenedFile(file: DriveEntry) {
+  try {
+    const fresh = await readFile(file);
+    syncedContentByFile.set(file.id, fresh);
+    cacheFile(file.id, fresh);
+
+    if (
+      currentFile?.id === file.id &&
+      !fileSaveQueues.has(file.id) &&
+      currentContent !== fresh
+    ) {
+      currentContent = fresh;
+      editing = null;
+      renderFile();
+    }
+  } catch (error) {
+    console.error("File refresh failed", error);
+  }
 }
 
 async function saveFile(file: DriveEntry, text: string) {
@@ -605,14 +787,26 @@ async function formatMarkdown(source: string) {
   return normalizeNestedCodeIndent(formatted);
 }
 
+function isThematicBreak(line: string) {
+  const leading = line.match(/^ */)?.[0].length || 0;
+  if (leading > 3) return false;
+
+  const trimmed = line.trim();
+  return (
+    /^(?:\*(?:[ \t]*\*){2,})$/.test(trimmed) ||
+    /^(?:-(?:[ \t]*-){2,})$/.test(trimmed) ||
+    /^(?:_(?:[ \t]*_){2,})$/.test(trimmed)
+  );
+}
+
 function isManagedLine(line: string) {
   return (
     /^ {0,3}#{1,6}[ \t]+.+/.test(line) ||
     /^\s*-\s+\*\*.+?\*\*\s*$/.test(line) ||
-    /^\s*\x60{3,}[^\x60]*$/.test(line)
+    /^\s*\x60{3,}[^\x60]*$/.test(line) ||
+    isThematicBreak(line)
   );
 }
-
 function nextLineEnd(source: string, start: number) {
   const newline = source.indexOf("\n", start);
   return newline < 0 ? source.length : newline + 1;
@@ -637,6 +831,19 @@ function parseMarkdownBlocks(source: string): MarkdownBlock[] {
         raw: rawLine,
         level: heading[1].length,
         value: heading[2]
+      });
+      position = end;
+      continue;
+    }
+
+    if (isThematicBreak(line)) {
+      blocks.push({
+        id: "divider-" + position,
+        type: "divider",
+        start: position,
+        end,
+        raw: rawLine,
+        value: line.trim()
       });
       position = end;
       continue;
@@ -767,7 +974,6 @@ function renderContentModeSwitch(state: EditState) {
 function renderCodeFooter(state: EditState) {
   return '<div class="code-editor-footer">' +
     '<input class="language-input" data-edit-language autocomplete="off" spellcheck="false" placeholder="language" value="' + esc(state.language || "") + '" aria-label="Code language">' +
-    renderEditActions() +
   '</div>';
 }
 function renderBlockEditor(state: EditState) {
@@ -778,6 +984,7 @@ function renderBlockEditor(state: EditState) {
       renderContentModeSwitch(state) +
       '<textarea class="block-code-input" data-edit-value spellcheck="false" placeholder="code">' + esc(state.value) + '</textarea>' +
       renderCodeFooter(state) +
+      renderEditActions() +
     '</div>';
   }
 
@@ -862,10 +1069,19 @@ function renderManagedBlock(block: MarkdownBlock) {
 
     return '<section class="managed-block code-shell' + nested + '" data-source-block="' + block.id + '">' +
       '<pre><code class="' + esc(languageClass) + '">' + esc(block.value || "") + '</code></pre>' +
-      (language ? '<span class="code-language-label">' + esc(language) + '</span>' : "") +
       '<div class="block-actions code-actions">' +
+        (language ? '<span class="code-language-label">' + esc(language) + '</span>' : "") +
         actionButton("copy", "copy", "Copy", block.id) +
         actionButton("edit", "edit", "Edit", block.id) +
+        actionButton("move", "move", "Move", block.id) +
+      '</div>' +
+    '</section>';
+  }
+
+  if (block.type === "divider") {
+    return '<section class="managed-block divider-block" data-source-block="' + block.id + '">' +
+      '<hr>' +
+      '<div class="block-actions">' +
         actionButton("move", "move", "Move", block.id) +
       '</div>' +
     '</section>';
@@ -921,6 +1137,8 @@ function renderDocumentBlocks() {
 
     while (next < blocks.length) {
       const block = blocks[next];
+
+      if (block.type === "divider") break;
 
       if (block.type === "heading") {
         const childLevel = block.level || 1;
@@ -1006,8 +1224,9 @@ function startNewBlock(type: EditState["type"], insertAt: number, options: Parti
   };
   renderFile();
 }
-
 function startEditBlock(block: MarkdownBlock) {
+  if (block.type === "divider") return;
+
   const blocks = parseMarkdownBlocks(currentContent);
   const parentItem = blocks.find(candidate => {
     if (candidate.type !== "item" || candidate.id === block.id) return false;
@@ -1078,13 +1297,58 @@ function insertMarkdownBlock(source: string, at: number, block: string) {
     (after ? "\n\n" + after : "\n");
 }
 
+function queueFileSave(file: DriveEntry, content: string) {
+  const previous = fileSaveQueues.get(file.id) || Promise.resolve();
+
+  const next = previous
+    .catch(() => undefined)
+    .then(async () => {
+      try {
+        await saveFile(file, content);
+        syncedContentByFile.set(file.id, content);
+        cacheFile(file.id, content);
+      } catch (error) {
+        console.error("Drive save failed", error);
+
+        const rollback = syncedContentByFile.get(file.id);
+        const isLatest = fileSaveQueues.get(file.id) === next;
+
+        if (rollback !== undefined && isLatest) {
+          cacheFile(file.id, rollback);
+
+          if (currentFile?.id === file.id && currentContent === content) {
+            currentContent = rollback;
+            editing = null;
+            renderFile();
+            toast("Save failed — reverted");
+          }
+        }
+      }
+    })
+    .finally(() => {
+      if (fileSaveQueues.get(file.id) === next) {
+        fileSaveQueues.delete(file.id);
+      }
+    });
+
+  fileSaveQueues.set(file.id, next);
+}
+
 async function persistContent(source: string) {
   if (!currentFile) return;
-  currentContent = await formatMarkdown(source);
-  await saveFile(currentFile, currentContent);
+
+  const file = currentFile;
+  const formatted = await formatMarkdown(source);
+
+  if (!syncedContentByFile.has(file.id)) {
+    syncedContentByFile.set(file.id, currentContent);
+  }
+
+  currentContent = formatted;
+  cacheFile(file.id, formatted);
   editing = null;
   renderFile();
-  toast("Saved");
+  queueFileSave(file, formatted);
 }
 
 async function saveEditing() {
@@ -1202,7 +1466,10 @@ function blockMoveRange(block: MarkdownBlock, blocks: MarkdownBlock[]) {
 
     for (let nextIndex = index + 1; nextIndex < blocks.length; nextIndex += 1) {
       const next = blocks[nextIndex];
-      if (next.type === "heading" && (next.level || 1) <= level) {
+      if (
+        next.type === "divider" ||
+        (next.type === "heading" && (next.level || 1) <= level)
+      ) {
         end = next.start;
         break;
       }
@@ -1384,6 +1651,50 @@ type ResolvedDrop = {
   element: HTMLElement;
 };
 
+function resolveContainerChildDrop(
+  container: HTMLElement,
+  childSelector: string,
+  y: number,
+  byId: Map<string, MarkdownBlock>,
+  isAllowed: (block: MarkdownBlock) => boolean
+): ResolvedDrop | null {
+  const childElements = [...container.querySelectorAll<HTMLElement>(childSelector)]
+    .map(element => {
+      const id = element.dataset.sourceBlock || "";
+      const block = byId.get(id);
+      if (!block || !isAllowed(block)) return null;
+      return { id, block, element, rect: element.getBoundingClientRect() };
+    })
+    .filter((child): child is NonNullable<typeof child> => Boolean(child))
+    .sort((a, b) => a.rect.top - b.rect.top);
+
+  if (!childElements.length) return null;
+
+  const first = childElements[0];
+  if (y < first.rect.top) {
+    return { id: first.id, mode: "before", element: first.element };
+  }
+
+  for (let index = 1; index < childElements.length; index += 1) {
+    const previous = childElements[index - 1];
+    const child = childElements[index];
+
+    if (y >= previous.rect.bottom && y <= child.rect.top) {
+      const midpoint = (previous.rect.bottom + child.rect.top) / 2;
+      return y < midpoint
+        ? { id: previous.id, mode: "after", element: previous.element }
+        : { id: child.id, mode: "before", element: child.element };
+    }
+  }
+
+  const last = childElements[childElements.length - 1];
+  if (y > last.rect.bottom) {
+    return { id: last.id, mode: "after", element: last.element };
+  }
+
+  return null;
+}
+
 function resolveDropTarget(x: number, y: number, sourceId: string): ResolvedDrop | null {
   const blocks = parseMarkdownBlocks(currentContent);
   const source = blocks.find(block => block.id === sourceId);
@@ -1433,6 +1744,15 @@ function resolveDropTarget(x: number, y: number, sourceId: string): ResolvedDrop
 
   if (direct) {
     if (direct.block.type === "heading") {
+      const positioned = resolveContainerChildDrop(
+        direct.element,
+        ":scope > .branch-children > [data-source-block]",
+        y,
+        byId,
+        isAllowed
+      );
+      if (positioned) return positioned;
+
       return {
         id: direct.id,
         mode: "inside",
@@ -1444,40 +1764,14 @@ function resolveDropTarget(x: number, y: number, sourceId: string): ResolvedDrop
       direct.block.type === "item" &&
       (source.type === "code" || source.type === "other")
     ) {
-      const childElements = [...direct.element.querySelectorAll<HTMLElement>(
-        ":scope > .item-children > [data-source-block]"
-      )]
-        .map(element => {
-          const id = element.dataset.sourceBlock || "";
-          const block = byId.get(id);
-          if (!block || !isAllowed(block)) return null;
-          return { id, block, element, rect: element.getBoundingClientRect() };
-        })
-        .filter((child): child is NonNullable<typeof child> => Boolean(child))
-        .sort((a, b) => a.rect.top - b.rect.top);
-
-      if (childElements.length) {
-        for (let index = 0; index < childElements.length; index += 1) {
-          const child = childElements[index];
-          const previous = childElements[index - 1];
-
-          if (!previous && y < child.rect.top) {
-            return { id: child.id, mode: "before", element: child.element };
-          }
-
-          if (previous && y >= previous.rect.bottom && y <= child.rect.top) {
-            const midpoint = (previous.rect.bottom + child.rect.top) / 2;
-            return y < midpoint
-              ? { id: previous.id, mode: "after", element: previous.element }
-              : { id: child.id, mode: "before", element: child.element };
-          }
-        }
-
-        const last = childElements[childElements.length - 1];
-        if (y > last.rect.bottom) {
-          return { id: last.id, mode: "after", element: last.element };
-        }
-      }
+      const positioned = resolveContainerChildDrop(
+        direct.element,
+        ":scope > .item-children > [data-source-block]",
+        y,
+        byId,
+        isAllowed
+      );
+      if (positioned) return positioned;
 
       return {
         id: direct.id,
@@ -1741,22 +2035,171 @@ function bindDocumentActions() {
   });
 }
 
+function sidebarTreeHtml(folderId: string, depth = 0): string {
+  const children = cachedFolderChildren(folderId);
+  if (!children) {
+    return '<div class="sidebar-status" style="--depth:' + depth + '">' +
+      (sidebarLoading.has(folderId) ? 'Loading…' : 'Not loaded') +
+    '</div>';
+  }
+
+  const visible = sidebarVisibleEntries(children);
+
+  if (!visible.length) {
+    return '<div class="sidebar-status" style="--depth:' + depth + '">Empty</div>';
+  }
+
+  return visible.map(entry => {
+    const indent = ' style="--depth:' + depth + '"';
+
+    if (entry.mimeType === FOLDER_MIME) {
+      const expanded = sidebarExpanded.has(entry.id);
+      const loading = sidebarLoading.has(entry.id);
+      const childrenHtml = expanded
+        ? '<div class="sidebar-children">' +
+            (loading && !cachedFolderChildren(entry.id)
+              ? '<div class="sidebar-status" style="--depth:' + (depth + 1) + '">Loading…</div>'
+              : sidebarTreeHtml(entry.id, depth + 1)) +
+          '</div>'
+        : '';
+
+      return '<div class="sidebar-node">' +
+        '<button class="sidebar-row sidebar-folder' + (expanded ? ' expanded' : '') + '" type="button" data-sidebar-folder="' + esc(entry.id) + '"' + indent + '>' +
+          '<span class="sidebar-chevron">' + icons.chevron + '</span>' +
+          '<span class="sidebar-entry-icon">' + icons.folder + '</span>' +
+          '<span class="sidebar-entry-name">' + esc(entry.name) + '</span>' +
+        '</button>' +
+        childrenHtml +
+      '</div>';
+    }
+
+    const current = currentFile?.id === entry.id;
+    return '<a class="sidebar-row sidebar-file' + (current ? ' current' : '') + '" data-sidebar-file="' + esc(entry.id) + '" href="' + esc(withDemo(routeFor(entry))) + '"' + indent + '>' +
+      '<span class="sidebar-chevron placeholder"></span>' +
+      '<span class="sidebar-entry-icon">' + icons.file + '</span>' +
+      '<span class="sidebar-entry-name">' + esc(entry.name.replace(/\.md$/i, "")) + '</span>' +
+    '</a>';
+  }).join("");
+}
+
+function updateSidebarTree() {
+  const tree = document.querySelector<HTMLElement>("#sidebar-tree");
+  if (tree) tree.innerHTML = sidebarTreeHtml(rootFolderId);
+
+  document.querySelectorAll<HTMLButtonElement>("[data-sidebar-folder]").forEach(button => {
+    button.addEventListener("click", () => {
+      const folderId = button.dataset.sidebarFolder;
+      if (!folderId) return;
+
+      if (sidebarExpanded.has(folderId)) {
+        sidebarExpanded.delete(folderId);
+        updateSidebarTree();
+        return;
+      }
+
+      sidebarExpanded.add(folderId);
+      updateSidebarTree();
+
+      const cachedRecord = readCachedChildren(folderId);
+      if (cachedRecord) {
+        if (Date.now() - cachedRecord.updatedAt >= CACHE_REFRESH_MS) {
+          void refreshSidebarFolder(folderId);
+        }
+      } else {
+        void ensureSidebarFolder(folderId);
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLAnchorElement>("[data-sidebar-file]").forEach(link => {
+    link.addEventListener("click", event => {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      const fileId = link.dataset.sidebarFile;
+      const children = [...sidebarChildrenCache.values()].flat();
+      const entry = children.find(item => item.id === fileId);
+      if (!entry) return;
+      sidebarOpen = false;
+      navigate(routeFor(entry));
+    });
+  });
+}
+
+async function refreshSidebarFolder(folderId: string) {
+  if (sidebarLoading.has(folderId)) return;
+
+  sidebarLoading.add(folderId);
+  updateSidebarTree();
+
+  try {
+    await directChildren(folderId);
+  } catch (error) {
+    console.error("Sidebar refresh failed", error);
+  } finally {
+    sidebarLoading.delete(folderId);
+    updateSidebarTree();
+  }
+}
+
+async function ensureSidebarFolder(folderId: string) {
+  if (cachedFolderChildren(folderId)) {
+    updateSidebarTree();
+    return;
+  }
+  await refreshSidebarFolder(folderId);
+}
+
+function bindSidebarShell() {
+  document.querySelector("#sidebar-toggle")?.addEventListener("click", () => {
+    sidebarOpen = !sidebarOpen;
+    document.querySelector(".file-sidebar")?.classList.toggle("open", sidebarOpen);
+    document.querySelector(".sidebar-backdrop")?.classList.toggle("show", sidebarOpen);
+  });
+
+  document.querySelector(".sidebar-backdrop")?.addEventListener("click", () => {
+    sidebarOpen = false;
+    document.querySelector(".file-sidebar")?.classList.remove("open");
+    document.querySelector(".sidebar-backdrop")?.classList.remove("show");
+  });
+
+  updateSidebarTree();
+
+  const cachedRoot = readCachedChildren(rootFolderId);
+  if (cachedRoot) {
+    if (Date.now() - cachedRoot.updatedAt >= CACHE_REFRESH_MS) {
+      void refreshSidebarFolder(rootFolderId);
+    }
+  } else {
+    void ensureSidebarFolder(rootFolderId);
+  }
+}
+
 function renderFile() {
   if (!currentFile) return;
 
   app.innerHTML =
-    '<main class="doc-shell">' +
-      '<header class="doc-topbar">' +
-        '<button class="icon-btn ghost" id="back" aria-label="Back">' + icons.back + '</button>' +
-        '<div class="doc-name">' + esc(currentFile.name.replace(/\.md$/i, "")) + '</div>' +
-        '<div class="doc-actions">' +
-          actionButton("new-heading", "branch", "Create branch") +
-          actionButton("new-item", "plus", "Add item") +
-          actionButton("new-code", "code", "Add code block") +
-        '</div>' +
-      '</header>' +
-      '<article class="markdown">' + renderDocumentBlocks() + '</article>' +
-    '</main>';
+    '<div class="doc-page">' +
+      '<aside class="file-sidebar' + (sidebarOpen ? ' open' : '') + '">' +
+        '<div class="sidebar-title">Secrets Keep</div>' +
+        '<div class="sidebar-tree" id="sidebar-tree">' + sidebarTreeHtml(rootFolderId) + '</div>' +
+      '</aside>' +
+      '<button class="sidebar-backdrop' + (sidebarOpen ? ' show' : '') + '" type="button" aria-label="Close sidebar"></button>' +
+      '<main class="doc-shell">' +
+        '<header class="doc-topbar">' +
+          '<div class="doc-nav">' +
+            '<button class="icon-btn ghost sidebar-toggle" id="sidebar-toggle" aria-label="Files">' + icons.menu + '</button>' +
+            '<button class="icon-btn ghost" id="back" aria-label="Back">' + icons.back + '</button>' +
+          '</div>' +
+          '<div class="doc-name">' + esc(currentFile.name.replace(/\.md$/i, "")) + '</div>' +
+          '<div class="doc-actions">' +
+            actionButton("new-heading", "branch", "Create branch") +
+            actionButton("new-item", "plus", "Add item") +
+            actionButton("new-code", "code", "Add code block") +
+          '</div>' +
+        '</header>' +
+        '<article class="markdown">' + renderDocumentBlocks() + '</article>' +
+      '</main>' +
+    '</div>';
 
   document.querySelector("#back")?.addEventListener("click", async () => {
     editing = null;
@@ -1764,8 +2207,10 @@ function renderFile() {
     if (route) navigate(route);
   });
 
+  bindSidebarShell();
   bindDocumentActions();
 }
+
 async function isInsideSecrets(entry: DriveEntry) {
   if (entry.id === rootFolderId) return true;
 
@@ -1800,7 +2245,12 @@ async function renderRoute() {
   if (route.kind === "root") {
     app.innerHTML = '<div class="loading"></div>';
     try {
-      const root = await getEntry(rootFolderId);
+      const root: DriveEntry = {
+        id: rootFolderId,
+        name: "secrets",
+        mimeType: FOLDER_MIME,
+        parents: []
+      };
       currentFile = null;
       currentContent = "";
       filter = "";
@@ -1838,7 +2288,19 @@ async function renderRoute() {
 
     currentFolder = null;
     currentFile = entry;
+
+    const cachedFile = readCachedFile(entry.id);
+    if (cachedFile) {
+      currentContent = cachedFile.content;
+      syncedContentByFile.set(entry.id, cachedFile.content);
+      renderFile();
+      void refreshOpenedFile(entry);
+      return;
+    }
+
     currentContent = await readFile(entry);
+    syncedContentByFile.set(entry.id, currentContent);
+    cacheFile(entry.id, currentContent);
     renderFile();
   } catch (error) {
     console.error(error);
