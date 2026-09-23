@@ -905,3 +905,66 @@ body.dragging-block .block-action[data-action="move"]{cursor:grabbing}
   }
 }
 
+
+
+/* Unified block controls: centered on the top frame. */
+.heading-block>.branch-head>.block-actions,
+.item-block>.item-head>.block-actions,
+.raw-block>.block-actions,
+.code-shell>.code-actions{
+  left:50%;
+  right:auto;
+  bottom:auto;
+  transform:translate(-50%,-50%);
+  border-color:var(--line);
+  background:var(--action-bg)
+}
+.heading-block>.branch-head>.block-actions{top:-12px}
+.item-block>.item-head>.block-actions{top:-10px}
+.raw-block>.block-actions{top:0}
+.code-shell>.code-actions{top:0}
+
+@media(hover:none){
+  .heading-block>.branch-head>.block-actions,
+  .item-block>.item-head>.block-actions,
+  .raw-block>.block-actions,
+  .code-shell>.code-actions{
+    left:50%;
+    right:auto;
+    bottom:auto;
+    transform:translate(-50%,-50%)
+  }
+  .heading-block>.branch-head>.block-actions{top:-9px}
+  .item-block>.item-head>.block-actions{top:-8px}
+  .raw-block>.block-actions,
+  .code-shell>.code-actions{top:0}
+}
+
+/* GitHub-like copy button: inset at the top-right inside code. */
+.code-copy-always{
+  top:10px;
+  right:10px;
+  bottom:auto;
+  transform:none;
+  width:36px;
+  height:36px;
+  border-radius:8px;
+  background:color-mix(in srgb,var(--panel2) 94%,transparent);
+  box-shadow:0 1px 2px color-mix(in srgb,var(--strong) 10%,transparent)
+}
+.code-shell pre{
+  padding-right:56px
+}
+@media(pointer:coarse){
+  .code-copy-always{
+    top:8px;
+    right:8px;
+    bottom:auto;
+    transform:none;
+    width:38px;
+    height:38px
+  }
+  .code-shell pre{
+    padding-right:54px
+  }
+}
