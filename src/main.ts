@@ -1084,6 +1084,7 @@ function renderManagedBlock(block: MarkdownBlock) {
     return '<section class="managed-block divider-block" data-source-block="' + block.id + '">' +
       '<hr>' +
       '<div class="block-actions">' +
+        actionButton("edit", "edit", "Edit", block.id) +
         actionButton("move", "move", "Move", block.id) +
       '</div>' +
     '</section>';
@@ -1227,8 +1228,6 @@ function startNewBlock(type: EditState["type"], insertAt: number, options: Parti
   renderFile();
 }
 function startEditBlock(block: MarkdownBlock) {
-  if (block.type === "divider") return;
-
   const blocks = parseMarkdownBlocks(currentContent);
   const parentItem = blocks.find(candidate => {
     if (candidate.type !== "item" || candidate.id === block.id) return false;
@@ -1238,7 +1237,7 @@ function startEditBlock(block: MarkdownBlock) {
 
   editing = {
     mode: "edit",
-    type: block.type,
+    type: block.type === "divider" ? "other" : block.type,
     blockId: block.id,
     insertAt: block.start,
     level: block.level,
@@ -2373,6 +2372,20 @@ document.addEventListener("keydown", event => {
     document.querySelector<HTMLInputElement>("#search")?.focus();
   }
 });
+document.addEventListener("pointerdown", event => {
+  const target = event.target as HTMLElement | null;
+  if (!target || target.closest(".managed-block,.block-editor")) return;
+
+  document.querySelectorAll(".managed-block.active-block").forEach(active => {
+    active.classList.remove("active-block");
+  });
+
+  const focused = document.activeElement;
+  if (focused instanceof HTMLElement && focused !== document.body) {
+    focused.blur();
+  }
+});
+
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     if (import.meta.env.PROD) {
