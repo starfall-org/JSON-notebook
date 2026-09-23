@@ -1400,6 +1400,59 @@ async function saveEditing() {
   await persistContent(source);
 }
 
+function nearestStructuralParent(
+  block: MarkdownBlock,
+  blocks: MarkdownBlock[]
+): MarkdownBlock | null {
+  let owner: MarkdownBlock | null = null;
+
+  for (const candidate of blocks) {
+    if (candidate.id === block.id) continue;
+    if (candidate.type !== "heading" && candidate.type !== "item") continue;
+    if (candidate.start >= block.start) continue;
+
+    const range = blockMoveRange(candidate, blocks);
+    if (block.start >= range.end) continue;
+
+    if (
+      !owner ||
+      candidate.start > owner.start ||
+      (
+        candidate.start === owner.start &&
+        candidate.type === "item" &&
+        owner.type === "heading"
+      )
+    ) {
+      owner = candidate;
+    }
+  }
+
+  return owner;
+}
+
+function deleteWithOwnedContent(block: MarkdownBlock, blocks: MarkdownBlock[]) {
+  const removable = new Set<string>([block.id]);
+
+  if (block.type === "heading" || block.type === "item") {
+    for (const candidate of blocks) {
+      if (candidate.type !== "code" && candidate.type !== "other") continue;
+      const owner = nearestStructuralParent(candidate, blocks);
+      if (owner?.id === block.id) removable.add(candidate.id);
+    }
+  }
+
+  let output = currentContent;
+
+  for (const candidate of blocks
+    .filter(candidate => removable.has(candidate.id))
+    .sort((a, b) => b.start - a.start)
+  ) {
+    output = output.slice(0, candidate.start) + output.slice(candidate.end);
+  }
+
+  return output;
+}
+
 async function deleteEditing() {
   if (!editing) return;
 
@@ -1409,10 +1462,11 @@ async function deleteEditing() {
     return;
   }
 
-  const block = parseMarkdownBlocks(currentContent).find(item => item.id === editing?.blockId);
+  const blocks = parseMarkdownBlocks(currentContent);
+  const block = blocks.find(item => item.id === editing?.blockId);
   if (!block) return;
 
-  const source = currentContent.slice(0, block.start) + currentContent.slice(block.end);
+  const source = deleteWithOwnedContent(block, blocks);
   await persistContent(source);
 }
 
