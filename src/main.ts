@@ -1432,6 +1432,7 @@ function nearestStructuralParent(
 
 function deleteWithOwnedContent(block: MarkdownBlock, blocks: MarkdownBlock[]) {
   const removable = new Set<string>([block.id]);
+  const replacements = new Map<string, string>();
 
   if (block.type === "heading" || block.type === "item") {
     for (const candidate of blocks) {
@@ -1441,13 +1442,43 @@ function deleteWithOwnedContent(block: MarkdownBlock, blocks: MarkdownBlock[]) {
     }
   }
 
+  if (block.type === "heading") {
+    const range = blockMoveRange(block, blocks);
+
+    for (const candidate of blocks) {
+      if (
+        candidate.type !== "heading" ||
+        candidate.id === block.id ||
+        candidate.start <= block.start ||
+        candidate.start >= range.end
+      ) {
+        continue;
+      }
+
+      replacements.set(
+        candidate.id,
+        candidate.raw.replace(
+          /^( {0,3})#{2,6}([ 	]+)/,
+          (_match, indent: string, gap: string) =>
+            indent + "#".repeat(Math.max(1, (candidate.level || 1) - 1)) + gap
+        )
+      );
+    }
+  }
+
+  const operations = blocks
+    .filter(candidate => removable.has(candidate.id) || replacements.has(candidate.id))
+    .map(candidate => ({
+      start: candidate.start,
+      end: candidate.end,
+      text: removable.has(candidate.id) ? "" : replacements.get(candidate.id) || candidate.raw
+    }))
+    .sort((a, b) => b.start - a.start);
+
   let output = currentContent;
 
-  for (const candidate of blocks
-    .filter(candidate => removable.has(candidate.id))
-    .sort((a, b) => b.start - a.start)
-  ) {
-    output = output.slice(0, candidate.start) + output.slice(candidate.end);
+  for (const operation of operations) {
+    output = output.slice(0, operation.start) + operation.text + output.slice(operation.end);
   }
 
   return output;
@@ -1972,9 +2003,35 @@ function resolveDropTarget(x: number, y: number, sourceId: string): ResolvedDrop
     }
   }
 
-  return edgeTarget
-    ? { id: edgeTarget.id, mode: edgeTarget.mode, element: edgeTarget.element }
-    : null;
+  if (edgeTarget) {
+    return { id: edgeTarget.id, mode: edgeTarget.mode, element: edgeTarget.element };
+  }
+
+  // Far outside the document list still means "move to start/end", not an invalid drop.
+  const rootTargets = [...document.querySelectorAll<HTMLElement>(".markdown > [data-source-block]")]
+    .map(element => {
+      const id = element.dataset.sourceBlock || "";
+      const block = byId.get(id);
+      if (!block || !isAllowed(block)) return null;
+      return { id, element, rect: element.getBoundingClientRect() };
+    })
+    .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate))
+    .sort((a, b) => a.rect.top - b.rect.top);
+
+  if (rootTargets.length) {
+    const first = rootTargets[0];
+    const last = rootTargets[rootTargets.length - 1];
+
+    if (y < first.rect.top) {
+      return { id: first.id, mode: "before", element: first.element };
+    }
+
+    if (y > last.rect.bottom) {
+      return { id: last.id, mode: "after", element: last.element };
+    }
+  }
+
+  return null;
 }
 
 function bindMoveHandles() {
