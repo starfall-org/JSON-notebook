@@ -5,12 +5,9 @@ import { initializeApp } from "firebase/app";
 import {
   browserLocalPersistence,
   getAuth,
-  getRedirectResult,
   GoogleAuthProvider,
-  reauthenticateWithPopup,
-  reauthenticateWithRedirect,
   setPersistence,
-  signInWithPopup,
+  signInWithCredential,
   signOut as firebaseSignOut
 } from "firebase/auth";
 import "./style.css";
@@ -68,12 +65,19 @@ const firebaseApp = initializeApp({
   appId: "1:1064411966305:web:5d1ce7688d88112704b320"
 });
 const auth = getAuth(firebaseApp);
-const googleProvider = new GoogleAuthProvider();
-googleProvider.addScope(DRIVE_SCOPE);
 const demo = new URLSearchParams(location.search).has("demo");
 const fence = String.fromCharCode(96).repeat(3);
 const SESSION_KEY = "secret-keep.google-session";
-const SILENT_REAUTH_KEY = "secrets-keep.silent-reauth";
+const OAUTH_SESSION_KEY = "secrets-keep.oauth-session";
+const OAUTH_RETURN_KEY = "secrets-keep.oauth-return";
+const GOOGLE_OAUTH_CLIENT_ID = "1064411966305-6vuqla6hbp2aegichjdb3d748jqji4be.apps.googleusercontent.com";
+const GOOGLE_OAUTH_REDIRECT_URI = "https://awesome-89e82.web.app/";
+const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const IDENTITY_TOOLKIT_API_KEY = "AIzaSyDk6tw0jfgUzfMA0xJHqKzDWU7MWyHF7Zc";
+const IDENTITY_CREATE_AUTH_URI_URL =
+  "https://identitytoolkit.googleapis.com/v1/accounts:createAuthUri?key=" + encodeURIComponent(IDENTITY_TOOLKIT_API_KEY);
+const IDENTITY_SIGN_IN_IDP_URL =
+  "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=" + encodeURIComponent(IDENTITY_TOOLKIT_API_KEY);
 const THEME_KEY = "secret-keep.theme";
 const FOLDER_CACHE_PREFIX = "secrets-keep.folder-cache.v1:";
 const FOLDER_VISIBLE_CACHE_PREFIX = "secrets-keep.folder-visible-cache.v1:";
@@ -83,8 +87,33 @@ const FILE_CACHE_PREFIX = "secrets-keep.file-cache.v1:";
 type ThemeMode = "system" | "light" | "dark";
 type StoredSession = {
   accessToken: string;
+  refreshToken?: string;
   expiresAt: number;
   signedIn: boolean;
+};
+
+type GoogleTokenResponse = {
+  access_token?: string;
+  refresh_token?: string;
+  expires_in?: number;
+  id_token?: string;
+  token_type?: string;
+  error?: string;
+  error_description?: string;
+};
+
+type IdentityAuthUriResponse = {
+  authUri?: string;
+  sessionId?: string;
+  error?: { message?: string };
+};
+
+type IdentitySignInResponse = {
+  oauthAccessToken?: string;
+  oauthRefreshToken?: string;
+  oauthExpireIn?: number;
+  oauthIdToken?: string;
+  error?: { message?: string };
 };
 
 let accessToken = "";
@@ -318,30 +347,39 @@ function storedSession(): StoredSession | null {
   }
 }
 
-function saveSession(token: string, expiresInSeconds: number) {
+function saveSession(
+  token: string,
+  expiresInSeconds: number,
+  refreshToken = storedSession()?.refreshToken || ""
+) {
   localStorage.setItem(SESSION_KEY, JSON.stringify({
     accessToken: token,
+    refreshToken,
     expiresAt: Date.now() + Math.max(0, expiresInSeconds - 60) * 1000,
     signedIn: true
   } satisfies StoredSession));
 }
 
+function clearOAuthAttempt() {
+  sessionStorage.removeItem(OAUTH_SESSION_KEY);
+  sessionStorage.removeItem(OAUTH_RETURN_KEY);
+}
+
 function clearSession() {
   accessToken = "";
   localStorage.removeItem(SESSION_KEY);
-  sessionStorage.removeItem(SILENT_REAUTH_KEY);
+  clearOAuthAttempt();
 }
 
 function expireStoredToken() {
   const session = storedSession();
   accessToken = "";
-
   if (!session?.signedIn) return;
 
   localStorage.setItem(SESSION_KEY, JSON.stringify({
+    ...session,
     accessToken: "",
-    expiresAt: 0,
-    signedIn: true
+    expiresAt: 0
   } satisfies StoredSession));
 }
 
@@ -364,48 +402,169 @@ function restoreStoredToken(minValidityMs = 0) {
   return true;
 }
 
-function silentGoogleProvider() {
-  const provider = new GoogleAuthProvider();
-  provider.addScope(DRIVE_SCOPE);
+async function postGoogleToken(params: Record<string, string>): Promise<GoogleTokenResponse> {
+  const response = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(params)
+  });
 
-  const parameters: Record<string, string> = { prompt: "none" };
-  if (auth.currentUser?.email) parameters.login_hint = auth.currentUser.email;
+  const result = await response.json() as GoogleTokenResponse;
+  if (!response.ok) {
+    throw new Error(
+      result.error_description ||
+      result.error ||
+      "Google OAuth token refresh failed"
+    );
+  }
 
-  provider.setCustomParameters(parameters);
-  return provider;
+  return result;
 }
 
-function saveCredentialToken(result: Awaited<ReturnType<typeof signInWithPopup>>) {
-  const credential = GoogleAuthProvider.credentialFromResult(result);
-  const token = credential?.accessToken;
-  if (!token) return false;
-
-  accessToken = token;
-  saveSession(token, 3600);
-  sessionStorage.removeItem(SILENT_REAUTH_KEY);
-  return true;
+async function signInFirebaseWithGoogleToken(access: string, idToken?: string) {
+  const credential = GoogleAuthProvider.credential(idToken || null, access);
+  await signInWithCredential(auth, credential);
 }
 
-async function refreshDriveTokenWithPopup() {
+async function beginOfflineOAuth(): Promise<never> {
+  const customParameter: Record<string, string> = {
+    prompt: "consent",
+    access_type: "offline",
+    include_granted_scopes: "true"
+  };
+
+  if (auth.currentUser?.email) {
+    customParameter.login_hint = auth.currentUser.email;
+  }
+
+  const response = await fetch(IDENTITY_CREATE_AUTH_URI_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      providerId: "google.com",
+      continueUri: GOOGLE_OAUTH_REDIRECT_URI,
+      oauthScope: DRIVE_SCOPE,
+      customParameter
+    })
+  });
+
+  const result = await response.json() as IdentityAuthUriResponse;
+  if (!response.ok || !result.authUri || !result.sessionId) {
+    throw new Error(result.error?.message || "Could not start Google offline authorization");
+  }
+
+  sessionStorage.setItem(OAUTH_SESSION_KEY, result.sessionId);
+  sessionStorage.setItem(OAUTH_RETURN_KEY, location.href);
+  location.assign(result.authUri);
+  throw new Error("Redirecting to Google OAuth");
+}
+
+async function handleOfflineOAuthCallback() {
+  const url = new URL(location.href);
+  const code = url.searchParams.get("code");
+  const oauthError = url.searchParams.get("error");
+
+  if (!code && !oauthError) return false;
+
+  const sessionId = sessionStorage.getItem(OAUTH_SESSION_KEY);
+  const returnUrl = sessionStorage.getItem(OAUTH_RETURN_KEY) || "/";
+
+  try {
+    if (oauthError) {
+      throw new Error(url.searchParams.get("error_description") || oauthError);
+    }
+
+    if (!code || !sessionId) {
+      throw new Error("Invalid Google OAuth callback session");
+    }
+
+    const response = await fetch(IDENTITY_SIGN_IN_IDP_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requestUri: location.href,
+        sessionId,
+        returnRefreshToken: true,
+        returnSecureToken: true,
+        returnIdpCredential: true
+      })
+    });
+
+    const result = await response.json() as IdentitySignInResponse;
+    if (!response.ok) {
+      throw new Error(result.error?.message || "Google offline authorization failed");
+    }
+
+    if (!result.oauthAccessToken || !result.oauthRefreshToken) {
+      throw new Error("Google did not return an OAuth refresh token");
+    }
+
+    accessToken = result.oauthAccessToken;
+    saveSession(
+      result.oauthAccessToken,
+      result.oauthExpireIn || 3600,
+      result.oauthRefreshToken
+    );
+
+    await signInFirebaseWithGoogleToken(
+      result.oauthAccessToken,
+      result.oauthIdToken
+    );
+
+    const restored = new URL(returnUrl, location.origin);
+    const nextPath = restored.origin === location.origin
+      ? restored.pathname + restored.search + restored.hash
+      : "/";
+
+    clearOAuthAttempt();
+    history.replaceState({}, "", nextPath);
+    return true;
+  } catch (error) {
+    clearOAuthAttempt();
+    throw error;
+  }
+}
+
+async function refreshDriveToken() {
   if (demo) return true;
 
-  if (storedTokenIsValid(5 * 60 * 1000)) {
+  if (storedTokenIsValid(30_000)) {
     restoreStoredToken();
     return true;
   }
 
-  if (!auth.currentUser || !storedSession()?.signedIn) return false;
+  const session = storedSession();
+  if (!session?.refreshToken) return false;
   if (driveTokenRefreshPromise) return driveTokenRefreshPromise;
-
-  const user = auth.currentUser;
 
   driveTokenRefreshPromise = (async () => {
     try {
-      const result = await reauthenticateWithPopup(user, silentGoogleProvider());
-      return saveCredentialToken(result);
+      const result = await postGoogleToken({
+        client_id: GOOGLE_OAUTH_CLIENT_ID,
+        refresh_token: session.refreshToken!,
+        grant_type: "refresh_token"
+      });
+
+      if (!result.access_token) return false;
+
+      accessToken = result.access_token;
+      saveSession(
+        result.access_token,
+        result.expires_in || 3600,
+        result.refresh_token || session.refreshToken
+      );
+
+      if (!auth.currentUser) {
+        await signInFirebaseWithGoogleToken(
+          result.access_token,
+          result.id_token
+        );
+      }
+
+      return true;
     } catch (error) {
-      console.warn("Silent Google refresh popup failed", error);
-      restoreStoredToken();
+      console.error("Google refresh token failed", error);
+      expireStoredToken();
       return false;
     } finally {
       driveTokenRefreshPromise = null;
@@ -415,27 +574,11 @@ async function refreshDriveTokenWithPopup() {
   return driveTokenRefreshPromise;
 }
 
-async function beginSilentDriveRedirect(): Promise<never> {
-  if (!auth.currentUser || !storedSession()?.signedIn) {
-    throw new Error("Google Drive authorization required");
-  }
-
-  sessionStorage.setItem(SILENT_REAUTH_KEY, location.href);
-  await reauthenticateWithRedirect(auth.currentUser, silentGoogleProvider());
-  throw new Error("Silent Google reauthentication did not redirect");
-}
-
 async function ensureDriveAccessToken() {
   if (demo) return;
   if (restoreStoredToken(30_000)) return;
-
-  if (driveTokenRefreshPromise) {
-    const refreshed = await driveTokenRefreshPromise;
-    if (refreshed && restoreStoredToken(30_000)) return;
-    if (restoreStoredToken()) return;
-  }
-
-  await beginSilentDriveRedirect();
+  if (await refreshDriveToken()) return;
+  await beginOfflineOAuth();
 }
 
 async function logout() {
@@ -467,23 +610,28 @@ function toast(message: string) {
 
 async function authorize() {
   if (demo) return;
-
-  const result = await signInWithPopup(auth, googleProvider);
-  if (!saveCredentialToken(result)) {
-    throw new Error("Google Drive authorization failed");
-  }
+  await beginOfflineOAuth();
 }
 
 async function api(url: string, init: RequestInit = {}) {
   await ensureDriveAccessToken();
 
-  const headers = new Headers(init.headers);
-  headers.set("Authorization", "Bearer " + accessToken);
-  const response = await fetch(url, { ...init, headers });
+  const request = async () => {
+    const headers = new Headers(init.headers);
+    headers.set("Authorization", "Bearer " + accessToken);
+    return fetch(url, { ...init, headers });
+  };
+
+  let response = await request();
 
   if (response.status === 401) {
     expireStoredToken();
-    await beginSilentDriveRedirect();
+
+    if (!(await refreshDriveToken())) {
+      await beginOfflineOAuth();
+    }
+
+    response = await request();
   }
 
   if (!response.ok) throw new Error(await response.text());
@@ -2713,16 +2861,6 @@ document.addEventListener("keydown", event => {
 window.addEventListener("scroll", scheduleStickyBlockToolbar, { passive: true });
 window.addEventListener("resize", scheduleStickyBlockToolbar, { passive: true });
 
-document.addEventListener("pointerdown", () => {
-  if (
-    !demo &&
-    auth.currentUser &&
-    storedSession()?.signedIn &&
-    !storedTokenIsValid(5 * 60 * 1000)
-  ) {
-    void refreshDriveTokenWithPopup();
-  }
-}, { capture: true });
 
 document.addEventListener("pointerdown", event => {
   const target = event.target as HTMLElement | null;
@@ -2770,45 +2908,40 @@ async function bootstrap() {
   }
 
   await setPersistence(auth, browserLocalPersistence);
-  await auth.authStateReady();
-
-  const silentRedirectPending = sessionStorage.getItem(SILENT_REAUTH_KEY);
 
   try {
-    const redirectResult = await getRedirectResult(auth);
-
-    if (redirectResult) {
-      if (!saveCredentialToken(redirectResult)) {
-        throw new Error("Silent Google reauthentication returned no Drive token");
-      }
-    } else if (silentRedirectPending) {
-      throw new Error("Silent Google session is no longer available");
-    }
+    await handleOfflineOAuthCallback();
   } catch (error) {
-    console.error("Silent Google reauthentication failed", error);
-    sessionStorage.removeItem(SILENT_REAUTH_KEY);
+    console.error("Google offline OAuth failed", error);
+    renderLogin();
+    toast("Google authorization failed");
+    return;
+  }
 
-    if (silentRedirectPending) {
-      expireStoredToken();
-      renderLogin();
+  await auth.authStateReady();
+
+  const session = storedSession();
+
+  if (!session?.refreshToken) {
+    if (session?.signedIn || auth.currentUser) {
+      await beginOfflineOAuth();
       return;
     }
+
+    renderLogin();
+    return;
   }
 
   if (!auth.currentUser) {
-    clearSession();
-    renderLogin();
-    return;
-  }
-
-  if (!restoreStoredToken()) {
-    if (storedSession()?.signedIn) {
-      await beginSilentDriveRedirect();
+    if (!(await refreshDriveToken())) {
+      await beginOfflineOAuth();
       return;
     }
-
-    renderLogin();
-    return;
+  } else if (!restoreStoredToken()) {
+    if (!(await refreshDriveToken())) {
+      await beginOfflineOAuth();
+      return;
+    }
   }
 
   try {
@@ -2817,8 +2950,14 @@ async function bootstrap() {
   } catch (error) {
     console.error(error);
 
-    if (storedSession()?.signedIn) {
-      await beginSilentDriveRedirect();
+    if (storedSession()?.refreshToken) {
+      if (await refreshDriveToken()) {
+        await ensureRootFolder();
+        await renderRoute();
+        return;
+      }
+
+      await beginOfflineOAuth();
       return;
     }
 
