@@ -5,7 +5,10 @@ import { initializeApp } from "firebase/app";
 import {
   browserLocalPersistence,
   getAuth,
+  getRedirectResult,
   GoogleAuthProvider,
+  reauthenticateWithPopup,
+  reauthenticateWithRedirect,
   setPersistence,
   signInWithPopup,
   signOut as firebaseSignOut
@@ -70,6 +73,7 @@ googleProvider.addScope(DRIVE_SCOPE);
 const demo = new URLSearchParams(location.search).has("demo");
 const fence = String.fromCharCode(96).repeat(3);
 const SESSION_KEY = "secret-keep.google-session";
+const SILENT_REAUTH_KEY = "secrets-keep.silent-reauth";
 const THEME_KEY = "secret-keep.theme";
 const FOLDER_CACHE_PREFIX = "secrets-keep.folder-cache.v1:";
 const FOLDER_VISIBLE_CACHE_PREFIX = "secrets-keep.folder-visible-cache.v1:";
@@ -84,6 +88,7 @@ type StoredSession = {
 };
 
 let accessToken = "";
+let driveTokenRefreshPromise: Promise<boolean> | null = null;
 let rootFolderId = "";
 let entries: DriveEntry[] = [];
 let currentFolder: DriveEntry | null = null;
@@ -324,17 +329,113 @@ function saveSession(token: string, expiresInSeconds: number) {
 function clearSession() {
   accessToken = "";
   localStorage.removeItem(SESSION_KEY);
+  sessionStorage.removeItem(SILENT_REAUTH_KEY);
 }
 
-function restoreStoredToken() {
+function expireStoredToken() {
   const session = storedSession();
-  if (!session?.signedIn) return false;
-  if (session.accessToken && session.expiresAt > Date.now()) {
-    accessToken = session.accessToken;
+  accessToken = "";
+
+  if (!session?.signedIn) return;
+
+  localStorage.setItem(SESSION_KEY, JSON.stringify({
+    accessToken: "",
+    expiresAt: 0,
+    signedIn: true
+  } satisfies StoredSession));
+}
+
+function storedTokenIsValid(minValidityMs = 0) {
+  const session = storedSession();
+  return Boolean(
+    session?.signedIn &&
+    session.accessToken &&
+    session.expiresAt > Date.now() + minValidityMs
+  );
+}
+
+function restoreStoredToken(minValidityMs = 0) {
+  if (!storedTokenIsValid(minValidityMs)) {
+    accessToken = "";
+    return false;
+  }
+
+  accessToken = storedSession()!.accessToken;
+  return true;
+}
+
+function silentGoogleProvider() {
+  const provider = new GoogleAuthProvider();
+  provider.addScope(DRIVE_SCOPE);
+
+  const parameters: Record<string, string> = { prompt: "none" };
+  if (auth.currentUser?.email) parameters.login_hint = auth.currentUser.email;
+
+  provider.setCustomParameters(parameters);
+  return provider;
+}
+
+function saveCredentialToken(result: Awaited<ReturnType<typeof signInWithPopup>>) {
+  const credential = GoogleAuthProvider.credentialFromResult(result);
+  const token = credential?.accessToken;
+  if (!token) return false;
+
+  accessToken = token;
+  saveSession(token, 3600);
+  sessionStorage.removeItem(SILENT_REAUTH_KEY);
+  return true;
+}
+
+async function refreshDriveTokenWithPopup() {
+  if (demo) return true;
+
+  if (storedTokenIsValid(5 * 60 * 1000)) {
+    restoreStoredToken();
     return true;
   }
-  accessToken = "";
-  return false;
+
+  if (!auth.currentUser || !storedSession()?.signedIn) return false;
+  if (driveTokenRefreshPromise) return driveTokenRefreshPromise;
+
+  const user = auth.currentUser;
+
+  driveTokenRefreshPromise = (async () => {
+    try {
+      const result = await reauthenticateWithPopup(user, silentGoogleProvider());
+      return saveCredentialToken(result);
+    } catch (error) {
+      console.warn("Silent Google refresh popup failed", error);
+      restoreStoredToken();
+      return false;
+    } finally {
+      driveTokenRefreshPromise = null;
+    }
+  })();
+
+  return driveTokenRefreshPromise;
+}
+
+async function beginSilentDriveRedirect(): Promise<never> {
+  if (!auth.currentUser || !storedSession()?.signedIn) {
+    throw new Error("Google Drive authorization required");
+  }
+
+  sessionStorage.setItem(SILENT_REAUTH_KEY, location.href);
+  await reauthenticateWithRedirect(auth.currentUser, silentGoogleProvider());
+  throw new Error("Silent Google reauthentication did not redirect");
+}
+
+async function ensureDriveAccessToken() {
+  if (demo) return;
+  if (restoreStoredToken(30_000)) return;
+
+  if (driveTokenRefreshPromise) {
+    const refreshed = await driveTokenRefreshPromise;
+    if (refreshed && restoreStoredToken(30_000)) return;
+    if (restoreStoredToken()) return;
+  }
+
+  await beginSilentDriveRedirect();
 }
 
 async function logout() {
@@ -368,25 +469,21 @@ async function authorize() {
   if (demo) return;
 
   const result = await signInWithPopup(auth, googleProvider);
-  const credential = GoogleAuthProvider.credentialFromResult(result);
-  const token = credential?.accessToken;
-
-  if (!token) throw new Error("Google Drive authorization failed");
-
-  accessToken = token;
-  saveSession(token, 3600);
+  if (!saveCredentialToken(result)) {
+    throw new Error("Google Drive authorization failed");
+  }
 }
 
 async function api(url: string, init: RequestInit = {}) {
-  if (!accessToken) throw new Error("Google Drive authorization required");
+  await ensureDriveAccessToken();
 
   const headers = new Headers(init.headers);
   headers.set("Authorization", "Bearer " + accessToken);
   const response = await fetch(url, { ...init, headers });
 
   if (response.status === 401) {
-    clearSession();
-    throw new Error("Google Drive authorization expired");
+    expireStoredToken();
+    await beginSilentDriveRedirect();
   }
 
   if (!response.ok) throw new Error(await response.text());
@@ -2616,6 +2713,17 @@ document.addEventListener("keydown", event => {
 window.addEventListener("scroll", scheduleStickyBlockToolbar, { passive: true });
 window.addEventListener("resize", scheduleStickyBlockToolbar, { passive: true });
 
+document.addEventListener("pointerdown", () => {
+  if (
+    !demo &&
+    auth.currentUser &&
+    storedSession()?.signedIn &&
+    !storedTokenIsValid(5 * 60 * 1000)
+  ) {
+    void refreshDriveTokenWithPopup();
+  }
+}, { capture: true });
+
 document.addEventListener("pointerdown", event => {
   const target = event.target as HTMLElement | null;
   if (!target || target.closest(".managed-block,.block-editor")) return;
@@ -2664,6 +2772,29 @@ async function bootstrap() {
   await setPersistence(auth, browserLocalPersistence);
   await auth.authStateReady();
 
+  const silentRedirectPending = sessionStorage.getItem(SILENT_REAUTH_KEY);
+
+  try {
+    const redirectResult = await getRedirectResult(auth);
+
+    if (redirectResult) {
+      if (!saveCredentialToken(redirectResult)) {
+        throw new Error("Silent Google reauthentication returned no Drive token");
+      }
+    } else if (silentRedirectPending) {
+      throw new Error("Silent Google session is no longer available");
+    }
+  } catch (error) {
+    console.error("Silent Google reauthentication failed", error);
+    sessionStorage.removeItem(SILENT_REAUTH_KEY);
+
+    if (silentRedirectPending) {
+      expireStoredToken();
+      renderLogin();
+      return;
+    }
+  }
+
   if (!auth.currentUser) {
     clearSession();
     renderLogin();
@@ -2671,6 +2802,11 @@ async function bootstrap() {
   }
 
   if (!restoreStoredToken()) {
+    if (storedSession()?.signedIn) {
+      await beginSilentDriveRedirect();
+      return;
+    }
+
     renderLogin();
     return;
   }
@@ -2680,6 +2816,12 @@ async function bootstrap() {
     await renderRoute();
   } catch (error) {
     console.error(error);
+
+    if (storedSession()?.signedIn) {
+      await beginSilentDriveRedirect();
+      return;
+    }
+
     renderLogin();
   }
 }
