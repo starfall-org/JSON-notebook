@@ -76,6 +76,14 @@ const fence = String.fromCharCode(96).repeat(3);
 const SESSION_KEY = "secret-keep.google-session";
 const OAUTH_RETURN_KEY = "secrets-keep.oauth-return";
 const OAUTH_AUTO_RECONNECT_KEY = "secrets-keep.oauth-auto-reconnect";
+const AUTH_BRIDGE_PARAM = "__auth_bridge";
+const AUTH_HANDOFF_TOKEN = "__sk_access_token";
+const OAUTH_BRIDGE_ATTEMPT_KEY = "secrets-keep.oauth-bridge-attempt";
+const AUTH_HANDOFF_EXPIRES = "__sk_expires";
+const AUTH_HANDOFF_RETURN = "__sk_return";
+const AUTH_HANDOFF_ERROR = "__sk_auth_error";
+const APP_ORIGIN = "https://awesome-89e82.web.app";
+const AUTH_ORIGIN = "https://awesome-89e82.firebaseapp.com";
 const THEME_KEY = "secret-keep.theme";
 const FOLDER_CACHE_PREFIX = "secrets-keep.folder-cache.v1:";
 const FOLDER_VISIBLE_CACHE_PREFIX = "secrets-keep.folder-visible-cache.v1:";
@@ -331,8 +339,8 @@ function saveSession(token: string, expiresInSeconds: number) {
 function clearOAuthAttempt() {
   sessionStorage.removeItem(OAUTH_RETURN_KEY);
   sessionStorage.removeItem(OAUTH_AUTO_RECONNECT_KEY);
+  sessionStorage.removeItem(OAUTH_BRIDGE_ATTEMPT_KEY);
 }
-
 function clearSession() {
   accessToken = "";
   localStorage.removeItem(SESSION_KEY);
@@ -370,8 +378,88 @@ function restoreStoredToken(minValidityMs = 0) {
   return true;
 }
 
+function authBridgeReturnUrl() {
+  const queryReturn = new URLSearchParams(location.search).get(AUTH_HANDOFF_RETURN);
+  const storedReturn = sessionStorage.getItem(OAUTH_RETURN_KEY);
+  const candidate = queryReturn || storedReturn;
+  if (!candidate) return null;
+
+  try {
+    const url = new URL(candidate);
+    return url.origin === APP_ORIGIN ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function isAuthBridgePage() {
+  return location.origin === AUTH_ORIGIN && Boolean(authBridgeReturnUrl());
+}
+
+function restoreAppUrl(returnUrl: string | null) {
+  if (!returnUrl) return;
+  const restored = new URL(returnUrl);
+  if (restored.origin !== APP_ORIGIN) return;
+  history.replaceState({}, "", restored.pathname + restored.search + restored.hash);
+}
+
+function consumeAuthHandoff() {
+  if (location.origin !== APP_ORIGIN || !location.hash) return false;
+
+  const params = new URLSearchParams(location.hash.slice(1));
+  const token = params.get(AUTH_HANDOFF_TOKEN);
+  const authError = params.get(AUTH_HANDOFF_ERROR);
+  if (!token && !authError) return false;
+
+  const returnUrl = params.get(AUTH_HANDOFF_RETURN);
+  if (authError) {
+    sessionStorage.setItem(OAUTH_AUTO_RECONNECT_KEY, "1");
+    restoreAppUrl(returnUrl);
+    return true;
+  }
+
+  const expiresIn = Number(params.get(AUTH_HANDOFF_EXPIRES) || 3600);
+  accessToken = token!;
+  saveSession(token!, Number.isFinite(expiresIn) ? expiresIn : 3600);
+  clearOAuthAttempt();
+  restoreAppUrl(returnUrl);
+  return true;
+}
+
+function returnFromAuthBridge(access: string | null, error = false) {
+  const returnUrl = authBridgeReturnUrl() || APP_ORIGIN + "/";
+  const target = new URL(returnUrl);
+  const params = new URLSearchParams();
+
+  if (access) {
+    params.set(AUTH_HANDOFF_TOKEN, access);
+    params.set(AUTH_HANDOFF_EXPIRES, "3600");
+  }
+  if (error) params.set(AUTH_HANDOFF_ERROR, "1");
+  params.set(AUTH_HANDOFF_RETURN, returnUrl);
+
+  target.hash = params.toString();
+  clearOAuthAttempt();
+  location.replace(target.href);
+}
+
 async function beginOfflineOAuth(automatic = false): Promise<never> {
-  sessionStorage.setItem(OAUTH_RETURN_KEY, location.href);
+  if (location.origin === APP_ORIGIN) {
+    if (automatic) {
+      sessionStorage.setItem(OAUTH_AUTO_RECONNECT_KEY, "1");
+    } else {
+      sessionStorage.removeItem(OAUTH_AUTO_RECONNECT_KEY);
+    }
+
+    const bridge = new URL(AUTH_ORIGIN + "/");
+    bridge.searchParams.set(AUTH_BRIDGE_PARAM, automatic ? "auto" : "manual");
+    bridge.searchParams.set(AUTH_HANDOFF_RETURN, location.href);
+    location.assign(bridge.href);
+    throw new Error("Redirecting to Firebase OAuth bridge");
+  }
+
+  const bridgeReturn = authBridgeReturnUrl();
+  sessionStorage.setItem(OAUTH_RETURN_KEY, bridgeReturn || location.href);
 
   if (automatic) {
     sessionStorage.setItem(OAUTH_AUTO_RECONNECT_KEY, "1");
@@ -379,18 +467,14 @@ async function beginOfflineOAuth(automatic = false): Promise<never> {
     sessionStorage.removeItem(OAUTH_AUTO_RECONNECT_KEY);
   }
 
+  sessionStorage.setItem(OAUTH_BRIDGE_ATTEMPT_KEY, "1");
   await signInWithRedirect(auth, googleProvider);
   throw new Error("Redirecting to Google OAuth");
 }
 
 async function handleOfflineOAuthCallback() {
-  const returnUrl = sessionStorage.getItem(OAUTH_RETURN_KEY);
   const result = await getRedirectResult(auth);
-
-  if (!result) {
-    sessionStorage.removeItem(OAUTH_RETURN_KEY);
-    return false;
-  }
+  if (!result) return false;
 
   const credential = GoogleAuthProvider.credentialFromResult(result);
   const access = credential?.accessToken || "";
@@ -399,22 +483,16 @@ async function handleOfflineOAuthCallback() {
     throw new Error("Google did not return an OAuth access token");
   }
 
-  accessToken = access;
-  saveSession(access, 3600);
-
-  if (returnUrl) {
-    const restored = new URL(returnUrl, location.origin);
-    const nextPath = restored.origin === location.origin
-      ? restored.pathname + restored.search + restored.hash
-      : "/";
-
-    history.replaceState({}, "", nextPath);
+  if (isAuthBridgePage()) {
+    returnFromAuthBridge(access);
+    return true;
   }
 
+  accessToken = access;
+  saveSession(access, 3600);
   clearOAuthAttempt();
   return true;
 }
-
 function hasPreviousSignIn() {
   return Boolean(storedSession()?.signedIn || auth.currentUser);
 }
@@ -2751,6 +2829,38 @@ systemTheme.addEventListener?.("change", () => {
 });
 
 async function bootstrap() {
+  if (location.origin === AUTH_ORIGIN) {
+    if (!isAuthBridgePage()) {
+      location.replace(
+        APP_ORIGIN + location.pathname + location.search + location.hash
+      );
+      return;
+    }
+
+    await setPersistence(auth, browserLocalPersistence);
+
+    const attempted = sessionStorage.getItem(OAUTH_BRIDGE_ATTEMPT_KEY) === "1";
+    try {
+      if (await handleOfflineOAuthCallback()) return;
+    } catch (error) {
+      console.error("Google OAuth callback failed", error);
+      returnFromAuthBridge(null, true);
+      return;
+    }
+
+    if (attempted) {
+      returnFromAuthBridge(null, true);
+      return;
+    }
+
+    const automatic =
+      new URLSearchParams(location.search).get(AUTH_BRIDGE_PARAM) === "auto";
+    await beginOfflineOAuth(automatic);
+    return;
+  }
+
+  consumeAuthHandoff();
+
   if (demo) {
     rootFolderId = "demo-root";
     await renderRoute();
@@ -2758,17 +2868,6 @@ async function bootstrap() {
   }
 
   await setPersistence(auth, browserLocalPersistence);
-
-  try {
-    await handleOfflineOAuthCallback();
-  } catch (error) {
-    console.error("Google OAuth callback failed", error);
-    sessionStorage.removeItem(OAUTH_RETURN_KEY);
-    renderLogin();
-    toast("Google authorization failed");
-    return;
-  }
-
   await auth.authStateReady();
 
   if (!restoreStoredToken(30_000)) {
