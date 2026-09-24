@@ -71,6 +71,7 @@ const SESSION_KEY = "secret-keep.google-session";
 const OAUTH_SESSION_KEY = "secrets-keep.oauth-session";
 const OAUTH_RETURN_KEY = "secrets-keep.oauth-return";
 const GOOGLE_OAUTH_CLIENT_ID = "1064411966305-6vuqla6hbp2aegichjdb3d748jqji4be.apps.googleusercontent.com";
+const GOOGLE_OAUTH_CLIENT_SECRET = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_SECRET || "";
 const GOOGLE_OAUTH_REDIRECT_URI = "https://awesome-89e82.web.app/";
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const IDENTITY_TOOLKIT_API_KEY = "AIzaSyDk6tw0jfgUzfMA0xJHqKzDWU7MWyHF7Zc";
@@ -539,8 +540,13 @@ async function refreshDriveToken() {
 
   driveTokenRefreshPromise = (async () => {
     try {
+      if (!GOOGLE_OAUTH_CLIENT_SECRET) {
+        throw new Error("Google OAuth client secret is not configured");
+      }
+
       const result = await postGoogleToken({
         client_id: GOOGLE_OAUTH_CLIENT_ID,
+        client_secret: GOOGLE_OAUTH_CLIENT_SECRET,
         refresh_token: session.refreshToken!,
         grant_type: "refresh_token"
       });
