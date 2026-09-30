@@ -4,50 +4,33 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "expo start",
-    "dev": "expo start --web --host lan",
-    "android": "expo run:android",
-    "web": "expo start --web",
+    "start": "vite --host 0.0.0.0",
+    "dev": "vite --host 0.0.0.0",
+    "web": "vite --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "test": "node --test scripts/test-*.mjs",
-    "build": "npm run typecheck && expo export --platform web",
-    "build:production": "npm run build",
-    "build:android": "npx eas-cli build --platform android --profile preview",
-    "build:android:production": "npx eas-cli build --platform android --profile production",
-    "export:android": "EXPO_NO_BUNDLE_SPLITTING=1 expo export --platform android --output-dir dist-android"
-  },
-  "devDependencies": {
-    "@types/react": "~19.2.4",
-    "typescript": "~6.0.3"
+    "build": "ionic build",
+    "build:production": "ionic build",
+    "android:sync": "ionic build && cap sync android",
+    "android": "npm run android:sync && cap open android",
+    "build:android": "ionic build && cap sync android && cd android && ./gradlew assembleRelease",
+    "ionic:build": "npm run typecheck && vite build"
   },
   "dependencies": {
-    "@react-native-google-signin/google-signin": "^16.1.5",
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/clipboard": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capgo/capacitor-social-login": "^8.5.11",
     "dompurify": "^3.4.16",
-    "expo": "~57.0.26",
-    "expo-clipboard": "^57.0.2",
-    "expo-constants": "~57.0.20",
-    "expo-linking": "~57.0.11",
-    "expo-router": "~57.0.24",
-    "expo-status-bar": "^57.0.1",
     "firebase": "^12.19.0",
-    "marked": "^18.0.14",
-    "prettier": "^3.9.8",
-    "punycode": "^2.3.1",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "react-native": "0.86.3",
-    "react-native-safe-area-context": "~5.7.0",
-    "react-native-screens": "~4.26.0",
-    "react-native-web": "^0.21.3"
+    "marked": "^18.0.14"
   },
-  "main": "expo-router/entry",
-  "expo": {
-    "autolinking": {
-      "android": {
-        "buildFromSource": [
-          "expo-dom-webview"
-        ]
-      }
-    }
+  "devDependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/cli": "^8.0.0",
+    "@ionic/cli": "^7.2.1",
+    "prettier": "^3.9.8",
+    "typescript": "~6.0.3",
+    "vite": "^7.1.7"
   }
 }
