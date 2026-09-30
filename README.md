@@ -29,3 +29,9 @@ Web retains the original Firebase redirect flow and UI. Data stays in Markdown f
 ## Validation
 
 `npm test` checks the original editor/toolbar behavior and token manager. `npm run typecheck`, web/Android exports, and `npx expo-doctor` check build compatibility. Native Google sign-in and real token renewal still require a physical Android device.
+
+## Android release APKs
+
+The preview build runs `:app:assembleRelease` and creates one APK for each of `arm64-v8a`, `armeabi-v7a`, `x86`, and `x86_64`. No universal APK is generated. EAS collects these APKs from `android/app/build/outputs/apk/release/*.apk`. Most current phones use the ARM64 APK.
+
+The native interface uses Expo DOM WebView's synchronous Android JavaScript interface. The prebuild plugin enables DOM storage for the existing editor/theme caches and permits local bundles to call Drive. External pages open in the system browser. If startup fails or does not complete, the app displays a retry action.

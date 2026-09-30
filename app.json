@@ -13,7 +13,7 @@
     ],
     "android": {
       "package": "com.contributory.secretskeep",
-      "versionCode": 2,
+      "versionCode": 3,
       "googleServicesFile": "./google-services.json"
     },
     "web": {
@@ -23,7 +23,9 @@
     },
     "plugins": [
       "@react-native-google-signin/google-signin",
-      "expo-router"
+      "expo-router",
+      "./plugins/withAbiSplits.cjs",
+      "./plugins/withDomWebViewSettings.cjs"
     ],
     "extra": {
       "eas": {

@@ -10,10 +10,11 @@ type Props = {
   nativeAuth: NativeBridge["auth"];
   copy: NativeBridge["copy"];
   exit: NativeBridge["exit"];
+  reportStartup(error: string | null): Promise<void>;
   ref?: React.Ref<{ back(): void }>;
   dom?: DOMProps;
 };
-export default function LegacyUI({ native, nativeAuth, copy, exit, ref }: Props) {
+export default function LegacyUI({ native, nativeAuth, copy, exit, reportStartup, ref }: Props) {
   useDOMImperativeHandle(ref ?? null, () => ({
     back() { void import("./main").then(app => app.nativeBack()); }
   }), []);
@@ -23,7 +24,10 @@ export default function LegacyUI({ native, nativeAuth, copy, exit, ref }: Props)
         auth: nativeAuth, copy, exit
       };
     }
-    void import("./main");
+    void import("./main")
+      .then(app => app.applicationReady)
+      .then(() => reportStartup(null))
+      .catch(() => reportStartup("Không thể mở giao diện. Vui lòng thử lại."));
   }, []);
   return <main id="app" />;
 }

@@ -21,7 +21,6 @@
     "typescript": "~6.0.3"
   },
   "dependencies": {
-    "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-google-signin/google-signin": "^16.1.5",
     "dompurify": "^3.4.16",
     "expo": "~57.0.26",
@@ -37,11 +36,18 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
-    "react-native-markdown-display": "^7.0.2",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
-    "react-native-web": "^0.21.3",
-    "react-native-webview": "13.16.1"
+    "react-native-web": "^0.21.3"
   },
-  "main": "expo-router/entry"
+  "main": "expo-router/entry",
+  "expo": {
+    "autolinking": {
+      "android": {
+        "buildFromSource": [
+          "@expo/dom-webview"
+        ]
+      }
+    }
+  }
 }

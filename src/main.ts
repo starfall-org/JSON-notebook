@@ -3158,4 +3158,8 @@ async function bootstrap() {
   }
 }
 
-void bootstrap();
+export const applicationReady = bootstrap().catch(error => {
+  renderLogin();
+  toast("Open failed. Please try again.");
+  console.error("Application initialization failed", error instanceof Error ? error.message : "Unknown error");
+});
