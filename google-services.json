@@ -1,0 +1,98 @@
+{
+  "project_info": {
+    "project_number": "1064411966305",
+    "project_id": "awesome-89e82",
+    "storage_bucket": "awesome-89e82.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1064411966305:android:1fb84772f3d24ca804b320",
+        "android_client_info": {
+          "package_name": "com.contributory.secretskeep"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1064411966305-v3j05a7a49rpvejgh976djfm5nuome7f.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.contributory.secretskeep",
+            "certificate_hash": "50496f15d9a8e5004157a6795f59e003d64e515b"
+          }
+        },
+        {
+          "client_id": "1064411966305-6vuqla6hbp2aegichjdb3d748jqji4be.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAphkXBLbeRXdW86m8AuSqNIURA_qk8Xmo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1064411966305-6vuqla6hbp2aegichjdb3d748jqji4be.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1064411966305-nka5otar9i3o3leuatfuo4d32b6i8iq0.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.gsadrive"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1064411966305:android:c46cd9a2abc7914204b320",
+        "android_client_info": {
+          "package_name": "com.starfall.gsadrive"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1064411966305-ajkrimlb9vsh5ib65vp662miefsju8js.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.starfall.gsadrive",
+            "certificate_hash": "842c413b3313cf025bedf88ebd0f0b38f7ad80ad"
+          }
+        },
+        {
+          "client_id": "1064411966305-6vuqla6hbp2aegichjdb3d748jqji4be.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAphkXBLbeRXdW86m8AuSqNIURA_qk8Xmo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1064411966305-6vuqla6hbp2aegichjdb3d748jqji4be.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1064411966305-nka5otar9i3o3leuatfuo4d32b6i8iq0.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.gsadrive"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

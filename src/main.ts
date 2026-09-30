@@ -1,4 +1,3 @@
-/// <reference types="vite/client" />
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { initializeApp } from "firebase/app";
@@ -12,6 +11,8 @@ import {
   signOut as firebaseSignOut
 } from "firebase/auth";
 import "./style.css";
+import type { NativeBridge } from "./native-bridge";
+const native = (window as Window & { secretsKeepNative?: NativeBridge }).secretsKeepNative;
 type DriveEntry = {
   id: string;
   name: string;
@@ -300,6 +301,7 @@ function routeFor(entry: DriveEntry) {
 }
 
 function withDemo(path: string) {
+  if (native) return "#" + path;
   return demo ? path + "?demo=1" : path;
 }
 
@@ -340,6 +342,7 @@ function storedSession(): StoredSession | null {
 }
 
 function saveSession(token: string, expiresInSeconds: number) {
+  if (native) return; // Native credentials stay in Google Play Services and host memory.
   localStorage.setItem(SESSION_KEY, JSON.stringify({
     accessToken: token,
     expiresAt: Date.now() + Math.max(0, expiresInSeconds - 60) * 1000,
@@ -512,8 +515,17 @@ function automaticReconnectBlocked() {
   return sessionStorage.getItem(OAUTH_AUTO_RECONNECT_KEY) === "1";
 }
 
-async function ensureDriveAccessToken() {
+async function ensureDriveAccessToken(force = false) {
   if (demo) return;
+  if (native) {
+    const result = await native.auth("token", force);
+    if (!result.token) {
+      if (result.loginRequired) renderLogin();
+      throw new Error(result.error || "Google authorization required");
+    }
+    accessToken = result.token;
+    return;
+  }
   if (restoreStoredToken(30_000)) return;
 
   if (hasPreviousSignIn() && !automaticReconnectBlocked()) {
@@ -526,7 +538,10 @@ async function ensureDriveAccessToken() {
 
 async function logout() {
   clearSession();
-  await firebaseSignOut(auth);
+  if (native) {
+    const result = await native.auth("logout");
+    if (result.error) throw new Error(result.error);
+  } else await firebaseSignOut(auth);
   rootFolderId = "";
   entries = [];
   currentFolder = null;
@@ -553,6 +568,12 @@ function toast(message: string) {
 
 async function authorize() {
   if (demo) return;
+  if (native) {
+    const result = await native.auth("login");
+    if (!result.token) throw new Error(result.error || "Sign in cancelled");
+    accessToken = result.token;
+    return;
+  }
   await beginOfflineOAuth(false);
 }
 
@@ -569,7 +590,7 @@ async function api(url: string, init: RequestInit = {}) {
 
   if (response.status === 401) {
     expireStoredToken();
-    await ensureDriveAccessToken();
+    await ensureDriveAccessToken(true);
     response = await request();
   }
 
@@ -1837,7 +1858,7 @@ function handleBlockAction(action: string, blockId: string) {
     return;
   }
   if (action === "copy" && block?.type === "code") {
-    navigator.clipboard.writeText(block.value || "").then(() => toast("Copied"));
+    (native ? native.copy(block.value || "") : navigator.clipboard.writeText(block.value || "")).then(() => toast("Copied"));
   }
 }
 
@@ -2900,10 +2921,11 @@ async function isInsideSecrets(entry: DriveEntry) {
 }
 
 function parseRoute() {
-  const folder = location.pathname.match(/^\/folder\/([^/]+)(?:\/.*)?$/);
+  const pathname = native ? location.hash.slice(1) || "/" : location.pathname;
+  const folder = pathname.match(/^\/folder\/([^/]+)(?:\/.*)?$/);
   if (folder) return { kind: "folder" as const, id: decodeURIComponent(folder[1]) };
 
-  const file = location.pathname.match(/^\/file\/([^/]+)(?:\/.*)?$/);
+  const file = pathname.match(/^\/file\/([^/]+)(?:\/.*)?$/);
   if (file) return { kind: "file" as const, id: decodeURIComponent(file[1]) };
 
   return { kind: "root" as const, id: "" };
@@ -3042,23 +3064,6 @@ document.addEventListener("pointerdown", event => {
   }
 });
 
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    if (import.meta.env.PROD) {
-      navigator.serviceWorker.register("/sw.js").catch(error => console.error("SW", error));
-      return;
-    }
-
-    navigator.serviceWorker.getRegistrations().then(registrations => {
-      for (const registration of registrations) void registration.unregister();
-    });
-    if ("caches" in window) {
-      caches.keys().then(keys => Promise.all(
-        keys.filter(key => key.startsWith("secret-keep-") || key.startsWith("secrets-keep-")).map(key => caches.delete(key))
-      ));
-    }
-  });
-}
 applyTheme(selectedTheme());
 
 const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
@@ -3066,7 +3071,34 @@ systemTheme.addEventListener?.("change", () => {
   if (selectedTheme() === "system") applyTheme("system");
 });
 
+export function nativeBack() {
+  if (sidebarOpen) {
+    sidebarOpen = false;
+    document.querySelector(".file-sidebar")?.classList.remove("open");
+    document.querySelector(".sidebar-backdrop")?.classList.remove("show");
+    return;
+  }
+  const overlay = document.querySelector<HTMLElement>(".modal-backdrop,.settings-backdrop");
+  if (overlay) { overlay.click(); return; }
+  if (parseRoute().kind !== "root") { navigate("/"); return; }
+  void native?.exit();
+}
+
 async function bootstrap() {
+  if (native) {
+    localStorage.removeItem(SESSION_KEY);
+    history.replaceState({}, "", "#/");
+    const result = await native.auth("restore");
+    if (!result.signedIn) { renderLogin(); return; }
+    try {
+      await ensureRootFolder();
+      await renderRoute();
+    } catch (error) {
+      renderLogin();
+      toast(error instanceof Error ? error.message : "Open failed");
+    }
+    return;
+  }
   if (location.origin === AUTH_ORIGIN) {
     if (!isAuthBridgePage()) {
       location.replace(

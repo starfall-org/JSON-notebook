@@ -1,23 +1,47 @@
 {
   "name": "secrets-keep",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "start": "expo start",
+    "dev": "expo start --web --host lan",
+    "android": "expo run:android",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
     "test": "node --test scripts/test-*.mjs",
-    "dev": "vite --host 0.0.0.0",
-    "build": "tsc -b && vite build",
-    "build:production": "node scripts/build-production.mjs",
-    "preview": "vite preview --host 0.0.0.0"
+    "build": "npm run typecheck && expo export --platform web",
+    "build:production": "npm run build",
+    "build:android": "npx eas-cli build --platform android --profile preview",
+    "build:android:production": "npx eas-cli build --platform android --profile production",
+    "export:android": "EXPO_NO_BUNDLE_SPLITTING=1 expo export --platform android --output-dir dist-android"
   },
   "devDependencies": {
-    "typescript": "^5.9.2",
-    "vite": "^7.1.7"
+    "@types/react": "~19.2.4",
+    "typescript": "~6.0.3"
   },
   "dependencies": {
-    "dompurify": "^3.4.15",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-google-signin/google-signin": "^16.1.5",
+    "dompurify": "^3.4.16",
+    "expo": "~57.0.26",
+    "expo-clipboard": "^57.0.2",
+    "expo-constants": "~57.0.20",
+    "expo-linking": "~57.0.11",
+    "expo-router": "~57.0.24",
+    "expo-status-bar": "^57.0.1",
     "firebase": "^12.19.0",
     "marked": "^18.0.14",
-    "prettier": "^3.9.8"
-  }
+    "prettier": "^3.9.8",
+    "punycode": "^2.3.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-markdown-display": "^7.0.2",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0",
+    "react-native-web": "^0.21.3",
+    "react-native-webview": "13.16.1"
+  },
+  "main": "expo-router/entry"
 }

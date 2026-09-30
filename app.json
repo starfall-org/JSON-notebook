@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "Secrets Keep",
+    "slug": "secrets-keep",
+    "version": "1.0.0",
+    "scheme": "secretskeep",
+    "orientation": "default",
+    "userInterfaceStyle": "automatic",
+    "icon": "./public/icons/icon-512.png",
+    "platforms": [
+      "android",
+      "web"
+    ],
+    "android": {
+      "package": "com.contributory.secretskeep",
+      "versionCode": 2,
+      "googleServicesFile": "./google-services.json"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "server",
+      "favicon": "./public/icons/icon-192.png"
+    },
+    "plugins": [
+      "@react-native-google-signin/google-signin",
+      "expo-router"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2ec92903-823d-4e49-980f-6fac3e836b1a"
+      }
+    },
+    "owner": "bosuutap"
+  }
+}

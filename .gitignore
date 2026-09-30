@@ -6,3 +6,14 @@ dist
 firebase-debug.log*
 *.tsbuildinfo
 __agent__/
+.expo/
+android/
+ios/
+functions/node_modules/
+functions/.secret.local
+functions/.env*
+!.env.example
+*.apk
+*.aab
+dist-android/
+dist-server/
