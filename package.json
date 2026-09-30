@@ -45,7 +45,7 @@
     "autolinking": {
       "android": {
         "buildFromSource": [
-          "@expo/dom-webview"
+          "expo-dom-webview"
         ]
       }
     }
