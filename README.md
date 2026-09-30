@@ -20,7 +20,7 @@ The EAS preview profile creates an APK. Native sign-in requires a development bu
 
 ## Android authentication
 
-Register the Android OAuth client for `com.contributory.secretskeep` and the signing certificate SHA-1, and keep `google-services.json` in sync. Set `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` to the Web client in the same Google project.
+Register the Android OAuth client for `org.starfallorb.secretskeep` and the signing certificate SHA-1, and keep `google-services.json` in sync. Set `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` to the Web client in the same Google project.
 
 Google Play Services retains the authorized account, restores it silently after reopening the app, and obtains Drive access tokens. Expired tokens are renewed without an hourly login prompt. A Drive 401 clears the native token cache and retries once. Concurrent renewals share one request, and logout prevents an in-flight renewal from restoring the session. No app OAuth backend, server auth code, client secret, or stored refresh token is required. Access tokens remain in memory on Android. Revoked authorization requires reconnecting.
 

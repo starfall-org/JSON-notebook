@@ -12,7 +12,7 @@
       "web"
     ],
     "android": {
-      "package": "com.contributory.secretskeep",
+      "package": "org.starfallorb.secretskeep",
       "versionCode": 4,
       "googleServicesFile": "./google-services.json"
     },
