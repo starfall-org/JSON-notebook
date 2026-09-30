@@ -25,6 +25,9 @@
 }
 *{box-sizing:border-box}
 html,body,#app{min-height:100%;background:var(--bg)}
+/* Expo mounts the DOM component in a horizontal flex root. Keep long code
+   inside its own scroller instead of expanding or shrinking the whole app. */
+#app{width:100%;min-width:0;flex:1 1 0%}
 html{overscroll-behavior-y:none;-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{margin:0;min-width:300px;background:var(--bg);color:var(--text);-webkit-tap-highlight-color:transparent;text-rendering:optimizeLegibility}
 button,input,textarea{font:inherit;color:inherit}
