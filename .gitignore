@@ -5,3 +5,4 @@ dist
 .firebase
 firebase-debug.log*
 *.tsbuildinfo
+__agent__/

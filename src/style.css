@@ -56,6 +56,13 @@ button:disabled{cursor:default;opacity:.5}
   width:100%;height:42px;border:1px solid var(--line);border-radius:11px;outline:0;background:var(--panel);color:var(--text)
 }
 .search input{padding:0 12px 0 36px}
+.document-search-panel{grid-column:1 / -1;display:flex;align-items:center;gap:8px;margin:0 4px 8px}
+.document-search-panel[hidden]{display:none}
+.document-search-panel .search{flex:1;min-width:0;margin:0}
+#document-search-status{font-size:12px;color:var(--muted);white-space:nowrap}
+.document-search-hidden{display:none!important}
+.document-search-match{background:var(--hover);border-radius:4px;scroll-margin-block:140px}
+.document-search-match.current-search-match{outline:2px solid var(--focus)}
 .name-input{padding:0 12px}
 .search input:focus,.name-input:focus,.block-input:focus,.block-code-input:focus{border-color:var(--focus)}
 .file-list{overflow:hidden;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
@@ -234,6 +241,14 @@ button:disabled{cursor:default;opacity:.5}
   gap:8px;
   flex-wrap:wrap
 }
+.item-code-drafts{flex:1 0 100%;grid-column:1 / -1;min-width:0;display:grid;gap:12px}
+.item-code-draft{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
+.item-code-label{font-size:12px;color:var(--muted)}
+.item-code-controls{display:flex;align-items:center;gap:4px}
+.item-code-draft .block-code-input{grid-column:1 / -1;padding-bottom:12px}
+.item-add-code{display:flex;align-items:center;justify-content:center;justify-self:start;width:40px;min-height:40px;border:1px dashed var(--line2);border-radius:8px;background:var(--panel);font-size:13px}
+.item-add-code:hover{background:var(--hover)}
+.item-add-code svg{width:16px;height:16px}
 .syntax-prefix{
   flex:0 0 auto;
   color:var(--muted);
@@ -1495,7 +1510,8 @@ body.dragging-block .managed-block:not(.drag-source):not(.drop-before):not(.drop
 .managed-block.toolbar-stuck>.item-head>.block-actions,
 .managed-block.toolbar-stuck.raw-block>.block-actions,
 .managed-block.toolbar-stuck.code-shell>.code-actions,
-.managed-block.toolbar-stuck.divider-block>.block-actions{
+.managed-block.toolbar-stuck.divider-block>.block-actions,
+.item-editor-block.toolbar-stuck>.edit-actions{
   position:fixed !important;
   top:var(--sticky-toolbar-top) !important;
   right:var(--sticky-toolbar-right) !important;

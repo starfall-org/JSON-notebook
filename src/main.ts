@@ -41,6 +41,13 @@ type MarkdownBlock = {
   language?: string;
 };
 
+type ItemCodeDraft = {
+  blockId?: string;
+  value: string;
+  language: string;
+  indent: string;
+};
+
 type EditState = {
   mode: "new" | "edit";
   type: "heading" | "item" | "code" | "other";
@@ -52,6 +59,7 @@ type EditState = {
   parentBlockId?: string;
   value: string;
   language?: string;
+  itemCodes?: ItemCodeDraft[];
 };
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
@@ -106,6 +114,9 @@ let currentFile: DriveEntry | null = null;
 let editing: EditState | null = null;
 let currentContent = "";
 let filter = "";
+let searchOpen = false;
+let documentSearchOpen = false;
+let documentSearchQuery = "";
 const sidebarChildrenCache = new Map<string, DriveEntry[]>();
 const sidebarCacheUpdatedAt = new Map<string, number>();
 const sidebarExpanded = new Set<string>();
@@ -826,6 +837,7 @@ function renderFolder() {
   const canGoBack = !isRoot && Boolean(currentFolder.parents?.[0]);
   const theme = selectedTheme();
   const folderTitle = isRoot ? "Secrets Keep" : currentFolder.name;
+  const searchButton = '<button class="icon-btn ghost" id="search-toggle" type="button" title="Search" aria-label="Search" aria-expanded="' + String(searchOpen) + '">' + icons.search + '</button>';
 
   app.innerHTML =
     '<main class="shell">' +
@@ -836,6 +848,7 @@ function renderFolder() {
         '<div class="folder-name">' + esc(folderTitle) + '</div>' +
         (isRoot
           ? '<div class="root-controls">' +
+              searchButton +
               '<div class="theme-buttons" role="group" aria-label="Theme">' +
                 '<button class="icon-btn ghost theme-btn' + (theme === "system" ? " active" : "") + '" type="button" data-theme-mode="system" title="System theme" aria-label="System theme">' + icons.themeSystem + '</button>' +
                 '<button class="icon-btn ghost theme-btn' + (theme === "light" ? " active" : "") + '" type="button" data-theme-mode="light" title="Light theme" aria-label="Light theme">' + icons.themeLight + '</button>' +
@@ -843,11 +856,13 @@ function renderFolder() {
               '</div>' +
               '<button class="icon-btn ghost" id="logout" title="Logout" aria-label="Logout">' + icons.logout + '</button>' +
             '</div>'
-          : '<span class="topbar-spacer"></span>') +
+          : searchButton) +
       '</header>' +
-      '<div class="search">' + icons.search +
-        '<input id="search" autocomplete="off" spellcheck="false" value="' + esc(filter) + '" aria-label="Search">' +
-      '</div>' +
+      (searchOpen
+        ? '<div class="search">' + icons.search +
+            '<input id="search" type="search" autocomplete="off" spellcheck="false" value="' + esc(filter) + '" aria-label="Search">' +
+          '</div>'
+        : '') +
       '<div class="file-list">' +
         shown.map(entry => {
           const isFolder = entry.mimeType === FOLDER_MIME;
@@ -864,6 +879,13 @@ function renderFolder() {
     if (route) navigate(route);
   });
 
+  document.querySelector<HTMLButtonElement>("#search-toggle")?.addEventListener("click", () => {
+    searchOpen = !searchOpen;
+    if (!searchOpen) filter = "";
+    renderFolder();
+    document.querySelector<HTMLElement>(searchOpen ? "#search" : "#search-toggle")?.focus();
+  });
+
   document.querySelectorAll<HTMLButtonElement>("[data-theme-mode]").forEach(button => {
     button.addEventListener("click", () => {
       const value = button.dataset.themeMode;
@@ -877,8 +899,16 @@ function renderFolder() {
     void logout();
   });
 
-  const input = document.querySelector<HTMLInputElement>("#search")!;
-  input.addEventListener("input", () => {
+  const input = document.querySelector<HTMLInputElement>("#search");
+  input?.addEventListener("keydown", event => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    searchOpen = false;
+    filter = "";
+    renderFolder();
+    document.querySelector<HTMLButtonElement>("#search-toggle")?.focus();
+  });
+  input?.addEventListener("input", () => {
     filter = input.value;
     renderFolder();
     const next = document.querySelector<HTMLInputElement>("#search")!;
@@ -1200,6 +1230,21 @@ function renderBlockEditor(state: EditState) {
       '<span class="syntax-prefix">- **</span>' +
       '<input class="block-input" data-edit-value autocomplete="off" spellcheck="false" value="' + esc(state.value) + '">' +
       '<span class="syntax-prefix">**</span>' +
+      '<div class="item-code-drafts">' +
+        (state.itemCodes || []).map((code, index) =>
+          '<div class="item-code-draft" data-item-code="' + index + '">' +
+            '<label class="item-code-label" for="item-code-' + index + '">' + (index + 1) + '</label>' +
+            '<div class="item-code-controls">' +
+              '<input class="language-input" data-item-code-language autocomplete="off" spellcheck="false" placeholder="language" aria-label="Code ' + (index + 1) + ' language">' +
+              (!code.blockId
+                ? '<button class="icon-btn ghost" type="button" data-action="item-remove-code" data-code-index="' + index + '" title="Remove new code block" aria-label="Remove code block ' + (index + 1) + '">' + icons.trash + '</button>'
+                : '') +
+            '</div>' +
+            '<textarea id="item-code-' + index + '" class="block-code-input" data-item-code-value spellcheck="false" placeholder="code">' + esc(code.value) + '</textarea>' +
+          '</div>'
+        ).join("") +
+        '<button class="item-add-code" type="button" data-action="item-add-code" title="Add code block" aria-label="Add code block">' + icons.plus + '</button>' +
+      '</div>' +
       renderEditActions() +
     '</div>';
   }
@@ -1255,6 +1300,9 @@ function renderItemBlock(block: MarkdownBlock, childrenHtml: string) {
 }
 
 function renderManagedBlock(block: MarkdownBlock) {
+  if (editing?.type === "item" && editing.itemCodes?.some(code => code.blockId === block.id)) {
+    return "";
+  }
   if (editing?.mode === "edit" && editing.blockId === block.id) {
     return renderBlockEditor(editing);
   }
@@ -1421,7 +1469,8 @@ function startNewBlock(type: EditState["type"], insertAt: number, options: Parti
     parentIndent: options.parentIndent,
     parentBlockId: options.parentBlockId,
     value: "",
-    language: ""
+    language: "",
+    itemCodes: type === "item" ? [] : undefined
   };
   renderFile();
 }
@@ -1442,7 +1491,11 @@ function startEditBlock(block: MarkdownBlock) {
     indent: block.indent || "",
     parentIndent: parentItem?.indent,
     value: block.value ?? block.raw.trimEnd(),
-    language: block.language || ""
+    language: block.language || "",
+    itemCodes: block.type === "item"
+      ? blocks.filter(candidate => candidate.type === "code" && nearestStructuralParent(candidate, blocks)?.id === block.id)
+          .map(code => ({ blockId: code.id, value: code.value || "", language: code.language || "", indent: code.indent || "" }))
+      : undefined
   };
   renderFile();
 }
@@ -1550,7 +1603,7 @@ async function persistContent(source: string) {
   queueFileSave(file, formatted);
 }
 
-async function saveEditing() {
+function captureEditingDraft() {
   if (!editing) return;
 
   const input = document.querySelector<HTMLInputElement | HTMLTextAreaElement>("[data-edit-value]");
@@ -1561,18 +1614,58 @@ async function saveEditing() {
     editing.language = languageInput.value.trim().replace(/\s+/g, "-");
   }
 
-  let source = currentContent;
-  const replacement = serializeEdit(editing);
+  if (editing.type === "item") {
+    for (const element of document.querySelectorAll<HTMLElement>("[data-item-code]")) {
+      const draft = editing.itemCodes?.[Number(element.dataset.itemCode)];
+      if (!draft) continue;
+      draft.value = element.querySelector<HTMLTextAreaElement>("[data-item-code-value]")!.value;
+      draft.language = element.querySelector<HTMLInputElement>("[data-item-code-language]")!.value.trim().replace(/\s+/g, "-");
+    }
+  }
+}
 
-  if (editing.mode === "new") {
-    source = insertMarkdownBlock(source, editing.insertAt, replacement);
-  } else {
-    const block = parseMarkdownBlocks(currentContent).find(item => item.id === editing?.blockId);
-    if (!block) throw new Error("Block not found");
-    source = source.slice(0, block.start) + replacement + source.slice(block.end);
+function sourceWithEdit(source: string, state: EditState) {
+  const replacement = serializeEdit(state);
+  const codes = state.type === "item" ? state.itemCodes || [] : [];
+  const serializeCode = (code: ItemCodeDraft) => serializeEdit({
+    mode: "new", type: "code", insertAt: 0,
+    value: code.value, language: code.language, indent: code.indent
+  });
+
+  if (state.mode === "new") {
+    const content = [replacement, ...codes.map(serializeCode)].join("\n");
+    return insertMarkdownBlock(source, state.insertAt, content);
   }
 
-  await persistContent(source);
+  const blocks = parseMarkdownBlocks(source);
+  const block = blocks.find(candidate => candidate.id === state.blockId);
+  if (!block) throw new Error("Block not found");
+  const operations = [{ start: block.start, end: block.end, text: replacement }];
+  for (const code of codes.filter(code => code.blockId)) {
+    const original = blocks.find(candidate => candidate.id === code.blockId);
+    if (!original || original.type !== "code" || nearestStructuralParent(original, blocks)?.id !== block.id) {
+      throw new Error("Item code block not found");
+    }
+    operations.push({ start: original.start, end: original.end, text: serializeCode(code) });
+  }
+
+  const addedCodes = codes.filter(code => !code.blockId);
+  if (addedCodes.length) {
+    // Insert at the original item's end first, so all earlier source offsets remain valid.
+    const at = blockMoveRange(block, blocks).end;
+    const addition = "\n\n" + addedCodes.map(serializeCode).join("\n") + "\n";
+    source = source.slice(0, at) + addition + source.slice(at);
+  }
+  for (const operation of operations.sort((a, b) => b.start - a.start)) {
+    source = source.slice(0, operation.start) + operation.text + source.slice(operation.end);
+  }
+  return source;
+}
+
+async function saveEditing() {
+  if (!editing) return;
+  captureEditingDraft();
+  await persistContent(sourceWithEdit(currentContent, editing));
 }
 
 function nearestStructuralParent(
@@ -2340,6 +2433,9 @@ function bindMobileBlockActivation() {
   });
 }
 function toolbarForManagedBlock(block: HTMLElement) {
+  if (block.classList.contains("item-editor-block")) {
+    return block.querySelector<HTMLElement>(":scope > .edit-actions");
+  }
   if (block.classList.contains("heading-block")) {
     return block.querySelector<HTMLElement>(":scope > .branch-head > .block-actions");
   }
@@ -2357,7 +2453,7 @@ let stickyToolbarFrame = 0;
 function updateStickyBlockToolbar() {
   stickyToolbarFrame = 0;
 
-  const blocks = [...document.querySelectorAll<HTMLElement>(".managed-block")];
+  const blocks = [...document.querySelectorAll<HTMLElement>(".managed-block,.item-editor-block")];
   const clear = () => {
     for (const block of blocks) {
       block.classList.remove("toolbar-stuck");
@@ -2379,13 +2475,15 @@ function updateStickyBlockToolbar() {
   const candidates = blocks
     .map(block => {
       const toolbar = toolbarForManagedBlock(block);
-      if (!toolbar) return null;
+      if (!toolbar || block.closest(".document-search-hidden") || !block.getClientRects().length) return null;
 
       const rect = block.getBoundingClientRect();
+      const isItemEditor = block.classList.contains("item-editor-block");
+      const bottomInset = isItemEditor ? Math.max(8, toolbar.getBoundingClientRect().height) : 8;
       if (
         rect.top >= stickyTop ||
-        rect.bottom <= stickyTop + 8 ||
-        rect.height <= availableHeight
+        rect.bottom <= stickyTop + bottomInset ||
+        (!isItemEditor && rect.height <= availableHeight)
       ) {
         return null;
       }
@@ -2429,6 +2527,11 @@ function scheduleStickyBlockToolbar() {
 }
 
 function bindDocumentActions() {
+  document.querySelectorAll<HTMLElement>("[data-item-code]").forEach(element => {
+    const draft = editing?.itemCodes?.[Number(element.dataset.itemCode)];
+    const input = element.querySelector<HTMLInputElement>("[data-item-code-language]");
+    if (draft && input) input.value = draft.language;
+  });
   document.querySelectorAll<HTMLButtonElement>("[data-action]").forEach(button => {
     button.addEventListener("click", async () => {
       const action = button.dataset.action || "";
@@ -2437,6 +2540,30 @@ function bindDocumentActions() {
       if (action === "move") return;
 
       try {
+        if (action === "item-remove-code" && editing?.type === "item") {
+          const index = Number(button.dataset.codeIndex);
+          if (!Number.isInteger(index) || index < 0) return;
+          const draft = editing.itemCodes?.[index];
+          if (!draft || draft.blockId) return;
+          captureEditingDraft();
+          editing.itemCodes!.splice(index, 1);
+          renderFile();
+          requestAnimationFrame(() => {
+            document.querySelector<HTMLButtonElement>('[data-action="item-add-code"]')?.focus();
+          });
+          return;
+        }
+        if (action === "item-add-code" && editing?.type === "item") {
+          captureEditingDraft();
+          editing.itemCodes ||= [];
+          editing.itemCodes.push({ value: "", language: "", indent: (editing.indent || "") + "  " });
+          renderFile();
+          requestAnimationFrame(() => {
+            const inputs = document.querySelectorAll<HTMLTextAreaElement>("[data-item-code-value]");
+            inputs[inputs.length - 1]?.focus();
+          });
+          return;
+        }
         if (action === "set-content-mode") {
           const kind = button.dataset.kind;
           if (kind === "code" || kind === "other") setContentMode(kind);
@@ -2623,6 +2750,93 @@ function bindSidebarShell() {
   }
 }
 
+function bindDocumentSearch() {
+  const toggle = document.querySelector<HTMLButtonElement>("#document-search-toggle")!;
+  const panel = document.querySelector<HTMLElement>("#document-search-panel")!;
+  const input = document.querySelector<HTMLInputElement>("#document-search")!;
+  const status = document.querySelector<HTMLElement>("#document-search-status")!;
+  const article = document.querySelector<HTMLElement>(".markdown")!;
+  let matches: HTMLElement[] = [];
+  let active = -1;
+
+  const selectMatch = (index: number, scroll: boolean) => {
+    matches[active]?.classList.remove("current-search-match");
+    active = matches.length ? (index + matches.length) % matches.length : -1;
+    matches[active]?.classList.add("current-search-match");
+    status.textContent = documentSearchQuery.trim()
+      ? (matches.length ? `${active + 1} / ${matches.length}` : "No matches")
+      : "";
+    if (scroll) matches[active]?.scrollIntoView({ block: "center" });
+  };
+
+  const updateMatches = (scroll = false) => {
+    article.querySelectorAll(".document-search-match,.current-search-match,.document-search-hidden").forEach(element => {
+      element.classList.remove("document-search-match", "current-search-match", "document-search-hidden");
+    });
+    matches = [];
+    active = -1;
+    const needle = documentSearchQuery.trim().toLowerCase();
+    if (documentSearchOpen && needle) {
+      const visible = new Set<Element>();
+      const keepAncestors = (element: Element) => {
+        for (let parent = element.parentElement; parent && parent !== article; parent = parent.parentElement) {
+          if (parent.matches(".managed-block")) visible.add(parent);
+        }
+      };
+      // Match only the section's own heading/item title, never its code or body.
+      article.querySelectorAll<HTMLElement>(
+        ".heading-block > .branch-head > .block-content,.item-block > .item-head > .block-content"
+      ).forEach(title => {
+        if (!(title.textContent || "").toLowerCase().includes(needle)) return;
+        const section = title.closest(".managed-block")!;
+        matches.push(title);
+        title.classList.add("document-search-match");
+        visible.add(section);
+        // A matching title keeps all of its content, including nested code blocks.
+        section.querySelectorAll(".managed-block").forEach(child => visible.add(child));
+        keepAncestors(section);
+      });
+      // Keep an active editor reachable without re-rendering or losing its draft.
+      article.querySelectorAll(".block-editor").forEach(keepAncestors);
+      article.querySelectorAll(".managed-block").forEach(block => {
+        block.classList.toggle("document-search-hidden", !visible.has(block));
+      });
+    }
+    selectMatch(0, scroll);
+    scheduleStickyBlockToolbar();
+  };
+
+  const setOpen = (open: boolean) => {
+    documentSearchOpen = open;
+    panel.hidden = !open;
+    toggle.setAttribute("aria-expanded", String(open));
+    if (!open) {
+      documentSearchQuery = "";
+      input.value = "";
+    }
+    updateMatches();
+    scheduleStickyBlockToolbar();
+    (open ? input : toggle).focus();
+  };
+  toggle.addEventListener("click", () => setOpen(!documentSearchOpen));
+  document.querySelector("#document-search-close")?.addEventListener("click", () => setOpen(false));
+  input.value = documentSearchQuery;
+  input.addEventListener("input", () => {
+    documentSearchQuery = input.value;
+    updateMatches(true);
+  });
+  input.addEventListener("keydown", event => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setOpen(false);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      selectMatch(active + (event.shiftKey ? -1 : 1), true);
+    }
+  });
+  updateMatches();
+}
+
 function renderFile() {
   if (!currentFile) return;
 
@@ -2641,10 +2855,18 @@ function renderFile() {
           '</div>' +
           '<div class="doc-name">' + esc(currentFile.name.replace(/\.md$/i, "")) + '</div>' +
           '<div class="doc-actions">' +
+            '<button class="icon-btn ghost block-action" id="document-search-toggle" type="button" title="Search in file" aria-label="Search in file" aria-controls="document-search-panel" aria-expanded="' + String(documentSearchOpen) + '">' + icons.search + '</button>' +
             actionButton("new-heading", "branch", "Create branch") +
             actionButton("new-item", "plus", "Add item") +
             actionButton("new-code", "code", "Add code block") +
           '</div>' +
+        '<div class="document-search-panel" id="document-search-panel"' + (documentSearchOpen ? '' : ' hidden') + '>' +
+          '<div class="search">' + icons.search +
+            '<input id="document-search" type="search" autocomplete="off" spellcheck="false" placeholder="Search section titles…" aria-label="Search section titles" aria-describedby="document-search-status">' +
+          '</div>' +
+          '<span id="document-search-status" role="status" aria-live="polite"></span>' +
+          '<button class="icon-btn ghost" id="document-search-close" type="button" title="Close search" aria-label="Close search">' + icons.cancel + '</button>' +
+        '</div>' +
         '</header>' +
         '<article class="markdown">' + renderDocumentBlocks() + '</article>' +
       '</main>' +
@@ -2658,6 +2880,7 @@ function renderFile() {
 
   bindSidebarShell();
   bindDocumentActions();
+  bindDocumentSearch();
 }
 
 async function isInsideSecrets(entry: DriveEntry) {
@@ -2690,6 +2913,8 @@ async function renderRoute() {
   if (!rootFolderId) return;
 
   const route = parseRoute();
+  documentSearchOpen = false;
+  documentSearchQuery = "";
 
   if (route.kind === "root") {
     app.innerHTML = '<div class="loading"></div>';
@@ -2703,6 +2928,7 @@ async function renderRoute() {
       currentFile = null;
       currentContent = "";
       filter = "";
+      searchOpen = false;
       await listFolder(root);
       renderFolder();
     } catch (error) {
@@ -2726,6 +2952,7 @@ async function renderRoute() {
       currentFile = null;
       currentContent = "";
       filter = "";
+      searchOpen = false;
       await listFolder(entry);
       renderFolder();
       return;
@@ -2781,8 +3008,19 @@ document.addEventListener("keydown", event => {
   const target = event.target as HTMLElement | null;
   if (target?.matches("input,textarea,[contenteditable=true]")) return;
 
+  if (event.key === "/" && currentFile) {
+    event.preventDefault();
+    if (!documentSearchOpen) document.querySelector<HTMLButtonElement>("#document-search-toggle")?.click();
+    else document.querySelector<HTMLInputElement>("#document-search")?.focus();
+    return;
+  }
+
   if (event.key === "/" && currentFolder) {
     event.preventDefault();
+    if (!searchOpen) {
+      searchOpen = true;
+      renderFolder();
+    }
     document.querySelector<HTMLInputElement>("#search")?.focus();
   }
 });
