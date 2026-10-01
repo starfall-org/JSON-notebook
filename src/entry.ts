@@ -1,6 +1,7 @@
 import { App as CapacitorApp } from "@capacitor/app";
 import { Clipboard } from "@capacitor/clipboard";
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
+import type { DriveTokenPlugin } from "./capacitor-auth";
 import type { NativeBridge } from "./native-bridge";
 
 declare global {
@@ -18,7 +19,8 @@ if (native) {
   ]);
 
   window.secretsKeepNative = {
-    auth: createNativeAuth(SocialLogin),
+    auth: createNativeAuth(SocialLogin, Capacitor.getPlatform() === "android"
+      ? registerPlugin<DriveTokenPlugin>("DriveToken") : undefined),
     copy: async text => {
       await Clipboard.write({ string: text });
     },

@@ -146,3 +146,72 @@ test("logout clears the native Google session", async () => {
   assert.deepEqual(await auth("logout"), {});
   assert.deepEqual(calls.at(-1), ["logout", "google"]);
 });
+
+function setupAndroid() {
+  const { plugin, calls } = setup();
+  const drive = {
+    async token(options) {
+      calls.push(["drive-token", options.force]);
+      return { accessToken: "renewed-drive-token" };
+    },
+    async rememberAccount(options) { calls.push(["remember-account", options]); },
+    async clearAccount() { calls.push(["clear-account"]); },
+  };
+  return { auth: createNativeAuth(plugin, drive), calls, drive };
+}
+
+test("Android restores an expired ID-token session without Credential Manager", async () => {
+  const { auth, calls } = setupAndroid();
+  assert.deepEqual(await auth("restore"), { signedIn: true, token: "renewed-drive-token" });
+  assert.equal(calls.filter(([name]) => name === "login" || name === "refresh" || name === "authorization").length, 0);
+});
+
+test("Android renews expired access tokens silently and shares concurrent renewals", async () => {
+  const { auth, calls, drive } = setupAndroid();
+  await auth("login");
+  assert.equal(calls.find(([name]) => name === "remember-account")[1].accessToken, "login-token");
+  const originalNow = Date.now;
+  const started = originalNow();
+  let release;
+  drive.token = options => {
+    calls.push(["drive-token", options.force]);
+    return new Promise(resolve => { release = () => resolve({ accessToken: "fresh-token" }); });
+  };
+  try {
+    Date.now = () => started + 51 * 60 * 1000;
+    const pending = [auth("token"), auth("token"), auth("token", true)];
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(calls.filter(([name]) => name === "drive-token").length, 1);
+    release();
+    for (const result of await Promise.all(pending)) {
+      assert.deepEqual(result, { token: "fresh-token", signedIn: true });
+    }
+    assert.equal(calls.filter(([name]) => name === "refresh" || name === "authorization").length, 0);
+  } finally { Date.now = originalNow; }
+});
+
+test("Android 401 recovery invalidates the native token cache", async () => {
+  const { auth, calls } = setupAndroid();
+  await auth("login");
+  await auth("token", true);
+  assert.deepEqual(calls.find(([name]) => name === "drive-token"), ["drive-token", true]);
+});
+
+test("Android reports revoked consent without opening a login prompt", async () => {
+  const { auth, calls, drive } = setupAndroid();
+  drive.token = async () => { throw Object.assign(new Error("Google Drive authorization required"), { code: "LOGIN_REQUIRED" }); };
+  assert.deepEqual(await auth("restore"), { signedIn: false });
+  assert.equal((await auth("token", true)).loginRequired, true);
+  assert.equal(calls.filter(([name]) => name === "login" || name === "refresh").length, 0);
+});
+
+test("Android retries transient renewal errors without losing account selection", async () => {
+  const { auth, calls, drive } = setupAndroid();
+  drive.token = async () => { throw new Error("offline"); };
+  assert.deepEqual(await auth("token", true), { error: "offline", loginRequired: false });
+  drive.token = async () => ({ accessToken: "recovered-token" });
+  assert.equal((await auth("token", true)).token, "recovered-token");
+  assert.equal(calls.filter(([name]) => name === "clear-account").length, 0);
+  await auth("logout");
+  assert.deepEqual(calls.slice(-2), [["clear-account"], ["logout", "google"]]);
+});

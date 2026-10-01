@@ -54,10 +54,17 @@ function tokenFromLogin(result: LoginResult) {
   return result.result.accessToken?.token || undefined;
 }
 
-export function createNativeAuth(plugin: GoogleSocialLogin): NativeAuth {
+export interface DriveTokenPlugin {
+  token(options: { force: boolean }): Promise<{ accessToken: string }>;
+  rememberAccount(options: { email?: string; idToken?: string; accessToken: string }): Promise<void>;
+  clearAccount(): Promise<void>;
+}
+
+export function createNativeAuth(plugin: GoogleSocialLogin, drive?: DriveTokenPlugin): NativeAuth {
   let initializePromise: Promise<void> | undefined;
   let cachedToken = "";
   let cachedUntil = 0;
+  let refreshPromise: Promise<string> | undefined;
 
   const initialize = () => {
     initializePromise ??= plugin.initialize({
@@ -87,24 +94,24 @@ export function createNativeAuth(plugin: GoogleSocialLogin): NativeAuth {
       return cachedToken;
     }
 
-    await plugin.refresh({
-      provider: "google",
-      options: {
-        scopes: [DRIVE_SCOPE],
-      },
-    });
-
-    const authorization = await plugin.getAuthorizationCode({
-      provider: "google",
-    });
-    if (!authorization.accessToken) {
-      clearLocal();
-      const error = new Error("Google Drive authorization required");
-      Object.assign(error, { code: "LOGIN_REQUIRED" });
-      throw error;
+    // Share one renewal across concurrent Drive requests.
+    if (!refreshPromise) {
+      refreshPromise = (async () => {
+        let token: string | undefined;
+        if (drive) {
+          token = (await drive.token({ force })).accessToken;
+        } else {
+          await plugin.refresh({ provider: "google", options: { scopes: [DRIVE_SCOPE] } });
+          token = (await plugin.getAuthorizationCode({ provider: "google" })).accessToken;
+        }
+        if (!token) {
+          clearLocal();
+          throw Object.assign(new Error("Google Drive authorization required"), { code: "LOGIN_REQUIRED" });
+        }
+        return remember(token);
+      })().finally(() => { refreshPromise = undefined; });
     }
-
-    return remember(authorization.accessToken);
+    return refreshPromise;
   };
 
   return async (
@@ -130,6 +137,7 @@ export function createNativeAuth(plugin: GoogleSocialLogin): NativeAuth {
 
       if (operation === "logout") {
         await initialize();
+        await drive?.clearAccount();
         await plugin.logout({ provider: "google" });
         clearLocal();
         return {};
@@ -160,6 +168,13 @@ export function createNativeAuth(plugin: GoogleSocialLogin): NativeAuth {
           throw error;
         }
 
+        if (drive && result.provider === "google" && result.result.responseType === "online") {
+          await drive.rememberAccount({
+            email: result.result.profile.email || undefined,
+            idToken: result.result.idToken || undefined,
+            accessToken: token,
+          });
+        }
         return {
           token: remember(token),
           signedIn: true,
