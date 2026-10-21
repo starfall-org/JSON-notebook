@@ -1,41 +1,39 @@
 # Secrets Keep
 
-Secrets Keep is a web-first Markdown editor backed by Google Drive. The same DOM UI runs directly in browsers and inside a thin Capacitor Android shell; there is no React Native or nested app WebView layer.
+Ứng dụng **React Native (Expo)** cho Android, iOS và Web để quản lý ghi chú bí mật dạng Markdown lưu trữ trực tiếp trong thư mục `secrets` trên **Google Drive**.
 
-## Development
+## Kiến trúc
+
+- **Không sử dụng WebView (`0% WebView` / không `"use dom"`)**: Toàn bộ giao diện thư mục, thanh bên cây thư mục lười tải (lazy tree drawer), trình xem/soạn thảo khối Markdown phân cấp, thanh công cụ nổi ghim dưới tiêu đề (sticky block toolbar) và kéo-thả sắp xếp khối đều được xây dựng bằng các thành phần React Native thuần.
+- **UI & Design System**:
+  - Xây dựng trên nền **[React Native Reusables](https://www.shadcn.io/template/mrzachnugent-react-native-reusables)** (`NativeWind v4`, `@rn-primitives/*`, `class-variance-authority`, `lucide-react-native`).
+  - Bảo toàn ngôn ngữ thiết kế tối giản của Secrets Keep: bảng màu giấy ấm `#f7f7f5` (Light) & đen tuyền OLED `#000000` (Dark), khung phân cấp nhánh `H1–H6`, thẻ mục viền nét đứt (`dashed`), render đầy đủ Markdown chuẩn CommonMark/GFM bằng `react-native-marked`, tô màu cú pháp khối mã cuộn ngang bằng `prism-react-renderer` và định dạng Markdown chuẩn qua `prettier`.
+- **Quản lý trạng thái & đồng bộ**: `@tanstack/react-query` + `zustand` + `@react-native-async-storage/async-storage` (lưu đệm cục bộ, làm mới nền sau 30 giây, hàng đợi lưu tuần tự từng tệp kèm khôi phục tự động nếu lỗi mạng).
+- **Đăng nhập & xác thực Google Drive (giữ nguyên phương thức gốc)**:
+  - **Android Native**: `@react-native-google-signin/google-signin` (`org.starfallorb.secretskeep`, `google-services.json`, phạm vi `https://www.googleapis.com/auth/drive`), tự động khôi phục phiên và làm mới access token ngầm qua Google Play Services mà không cần backend hay client secret; tự xóa cache token và thử lại khi gặp `401`.
+  - **Web**: `firebase/auth` giữ nguyên luồng OAuth Redirect Bridge giữa `https://awesome-89e82.web.app` và `https://awesome-89e82.firebaseapp.com` (cùng khóa phiên `secret-keep.google-session`), hỗ trợ đăng nhập popup khi chạy trên domain phát triển khác và chế độ `/?demo=1`.
+
+## Phát triển & Kiểm thử
 
 ```sh
-npm ci
+npm install
+cp .env.example .env
+
+# Chạy máy chủ phát triển Expo
 npm start
-npm test
+npm run web
+npm run android
+
+# Kiểm tra kiểu TypeScript & chạy bộ test tự động
 npm run typecheck
+npm test
+
+# Xuất bản Web SPA (dist/) tương thích Firebase Hosting
 npm run build
-npm run android:sync
+
+# Xuất bundle Android production
+npm run export:android
+
+# Build APK Android qua EAS (tách APK theo từng ABI)
 npm run build:android
 ```
-
-`npm run build` creates the Firebase-ready Vite output in `dist/`. `npm run android:sync` builds that same UI and copies it into the Capacitor Android project.
-
-## Android
-
-Package: `org.starfallorb.secretskeep`
-
-The Android project is tracked in `android/`. Capacitor provides the WebView shell, back-button handling, clipboard access, and app exit.
-
-Google authentication and Drive authorization use `@capgo/capacitor-social-login` in Google online mode. The plugin uses Android Credential Manager plus Google Play Services `AuthorizationClient`, persists the native Google session, exposes `refresh()` and `getAuthorizationCode()`, and returns the Drive access token to the existing app bridge. Secrets Keep keeps a short in-memory token cache so normal Drive requests do not revalidate Google auth on every API call. A Drive 401 forces the native refresh path.
-
-Register an Android OAuth client for `org.starfallorb.secretskeep` with the signing certificate SHA-1. The web client ID used by the native plugin must belong to the same Google Cloud project.
-
-The current Capacitor Android shell starts at versionCode 5; versionCode 4 belongs to the final Expo build.
-
-## Web
-
-The web build retains the existing Firebase redirect OAuth flow. User data remains in Markdown files inside the user's `secrets` folder in Google Drive.
-
-Firebase Hosting serves `dist/`. HTML routes are revalidated on reload while hashed Vite assets are cached long-term.
-
-## Validation
-
-`npm test` covers the existing editor behavior and the Capacitor auth adapter. `npm run typecheck` validates the TypeScript entry and bridge. Android validation uses `./gradlew assembleDebug assembleRelease lintDebug` after `npm run android:sync`.
-
-A local debug APK is signed with the Android debug key, so Google Drive login on that APK also requires the debug certificate SHA-1 to be registered. Production builds must use the registered release signing key.

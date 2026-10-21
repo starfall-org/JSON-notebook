@@ -1,17 +1,16 @@
 {
+  "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "target": "ES2022",
-    "useDefineForClassFields": true,
-    "module": "ESNext",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "moduleResolution": "Bundler",
-    "allowImportingTsExtensions": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
     "strict": true,
-    "skipLibCheck": true
+    "paths": {
+      "@/*": ["./*"]
+    }
   },
-  "include": ["src/**/*.ts", "capacitor.config.ts", "vite.config.ts"],
-  "exclude": ["node_modules", "android"]
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts",
+    "nativewind-env.d.ts"
+  ]
 }

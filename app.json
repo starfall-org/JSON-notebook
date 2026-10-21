@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "Secrets Keep",
+    "slug": "secrets-keep",
+    "version": "1.0.0",
+    "scheme": "secretskeep",
+    "orientation": "default",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "icon": "./public/icons/icon-512.png",
+    "platforms": [
+      "android",
+      "ios",
+      "web"
+    ],
+    "splash": {
+      "image": "./public/icons/icon-512.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f7f7f5",
+      "dark": {
+        "image": "./public/icons/icon-512.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#000000"
+      }
+    },
+    "android": {
+      "package": "org.starfallorb.secretskeep",
+      "versionCode": 6,
+      "edgeToEdgeEnabled": true,
+      "googleServicesFile": "./google-services.json",
+      "adaptiveIcon": {
+        "foregroundImage": "./public/icons/icon-512.png",
+        "backgroundColor": "#000000"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "org.starfallorb.secretskeep",
+      "supportsTablet": true
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./public/icons/icon-192.png"
+    },
+    "plugins": [
+      "@react-native-google-signin/google-signin",
+      "expo-router",
+      "./plugins/withAbiSplits.cjs"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2ec92903-823d-4e49-980f-6fac3e836b1a"
+      }
+    },
+    "owner": "bosuutap"
+  }
+}
