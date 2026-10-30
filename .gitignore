@@ -1,17 +1,21 @@
-node_modules
-dist
-.env
-.env.*
-.firebase
-firebase-debug.log*
-*.tsbuildinfo
-__agent__/
-.expo/
-ios/
-functions/node_modules/
-functions/.secret.local
-functions/.env*
-!.env.example
+# Dart / Flutter
+.dart_tool/
+.flutter-plugins-dependencies
+.pub/
+.pub-cache/
+build/
+coverage/
+*.iml
+.idea/
 *.apk
 *.aab
-dist-dist-server/
+android/local.properties
+android/key.properties
+android/.gradle/
+android/captures/
+# Legacy web dependencies and outputs
+legacy_capacitor/node_modules/
+legacy_capacitor/dist/
+.env
+.env.*
+.firebase/
