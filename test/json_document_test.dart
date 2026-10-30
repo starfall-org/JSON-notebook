@@ -34,7 +34,7 @@ void main() {
     expect(MarkdownToJson.convert(source).data, {
       'Services': {
         'Production': {
-          'Notes': ['API_URL=https://example.internal\nTOKEN=demo-value'],
+          'Notes': 'API_URL=https://example.internal\nTOKEN=demo-value',
         },
       },
     });
@@ -67,6 +67,38 @@ void main() {
     expect(doc.toJson(), contains('    "C": {'));
     expect(doc.toJson(), endsWith('\n'));
     expect(jsonDecode(doc.toJson()), doc.data);
+  });
+
+  test('Markdown import uses strings for zero and one value fields', () {
+    const source =
+        '# Empty\n# Tree\n## Node\n- Blank\n- Single\n```text\nonly\n```\n';
+    expect(MarkdownToJson.convert(source).data, {
+      'Empty': '',
+      'Tree': {
+        'Node': {'Blank': '', 'Single': 'only'},
+      },
+    });
+  });
+
+  test('Field count and nested promotion follow JSON value rules', () {
+    expect(JsonDocument.valueFromFields([]), '');
+    expect(JsonDocument.valueFromFields(['e']), 'e');
+    expect(JsonDocument.valueFromFields(['e', 'f']), ['e', 'f']);
+    var doc = JsonDocument.empty().addKey([], 'A', []);
+    expect(doc.data, {'A': ''});
+    doc = doc.addKey(['A'], 'B', ['value']);
+    expect(doc.data, {
+      'A': {'B': 'value'},
+    });
+    doc = doc.addKey(['A'], 'C', ['e', 'f']);
+    expect(doc.data, {
+      'A': {
+        'B': 'value',
+        'C': ['e', 'f'],
+      },
+    });
+    expect(() => doc.addKey(['A', 'C'], 'D', []), throwsFormatException);
+    expect(JsonDocument.parse(doc.toJson()).data, doc.data);
   });
 
   test('Add/edit/delete/reorder preserve structures with string values', () {

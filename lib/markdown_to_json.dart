@@ -135,7 +135,24 @@ class MarkdownToJson {
         'Unsupported Markdown at line ${i + 1}: ${line.trim()}',
       );
     }
-    return root;
+    dynamic normalize(dynamic value) {
+      if (value is Map<String, dynamic>) {
+        if (value.isEmpty) return '';
+        return <String, dynamic>{
+          for (final entry in value.entries) entry.key: normalize(entry.value),
+        };
+      }
+      if (value is List) {
+        if (value.isEmpty) return '';
+        if (value.length == 1) return value.first;
+        return List<String>.from(value);
+      }
+      return value;
+    }
+
+    return <String, dynamic>{
+      for (final entry in root.entries) entry.key: normalize(entry.value),
+    };
   }
 }
 

@@ -66,7 +66,7 @@ void main() {
     expect(find.text('notes'), findsOneWidget);
     await tester.tap(find.text('notes'));
     await tester.pumpAndSettle();
-    expect(find.byTooltip('Add value'), findsOneWidget);
+    expect(find.byTooltip('Add entry'), findsOneWidget);
   });
 
   testWidgets('Markdown is not parsed or rendered at runtime', (tester) async {

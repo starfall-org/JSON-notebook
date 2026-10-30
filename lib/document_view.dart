@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'json_document.dart';
 
@@ -13,14 +12,21 @@ class JsonDocumentView extends StatefulWidget {
   });
   final JsonDocument document;
   final Future<bool> Function(JsonDocument) onSave;
+
   @override
   State<JsonDocumentView> createState() => _JsonDocumentViewState();
 }
 
+class _ValueField {
+  _ValueField(this.id, this.text);
+  final int id;
+  String text;
+}
+
 class _Draft {
-  const _Draft(this.name, this.value);
+  const _Draft(this.name, this.fields);
   final String name;
-  final Object? value;
+  final List<String> fields;
 }
 
 class _JsonDocumentViewState extends State<JsonDocumentView> {
@@ -56,44 +62,85 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
     Object? current = '',
     bool isNew = false,
     bool requireKey = false,
+    bool appendField = false,
   }) async {
     var draftName = name;
-    var draftValue = current is String ? current : '';
+    var nextFieldId = 0;
+    final initialValues = current is List
+        ? current.cast<String>()
+        : current is String && current.isNotEmpty
+        ? <String>[current]
+        : <String>[];
+    final fields = [
+      for (final value in initialValues) _ValueField(nextFieldId++, value),
+    ];
+    if (appendField) fields.add(_ValueField(nextFieldId++, ''));
     String? validation;
     return showDialog<_Draft>(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, update) => AlertDialog(
+      builder: (dialog) => StatefulBuilder(
+        builder: (dialog, update) => AlertDialog(
           title: Text(isNew ? 'Add entry' : 'Edit entry'),
           scrollable: true,
           content: SizedBox(
-            width: 420,
+            width: 440,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (requireKey)
                   TextFormField(
+                    key: const ValueKey('json-key-input'),
                     initialValue: draftName,
-                    onChanged: (text) => draftName = text,
+                    onChanged: (value) => draftName = value,
                     decoration: const InputDecoration(labelText: 'Key'),
                   ),
-                if (current is String)
-                  TextFormField(
-                    key: const ValueKey('string-value-input'),
-                    initialValue: draftValue,
-                    minLines: 2,
-                    maxLines: 8,
-                    onChanged: (text) => draftValue = text,
-                    decoration: const InputDecoration(labelText: 'Value'),
+                if (current is! Map<String, dynamic>) ...[
+                  for (final field in fields)
+                    Padding(
+                      key: ValueKey('field-container-${field.id}'),
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              key: ValueKey('json-value-${field.id}'),
+                              initialValue: field.text,
+                              minLines: 1,
+                              maxLines: 8,
+                              onChanged: (value) => field.text = value,
+                              decoration: const InputDecoration(
+                                labelText: 'Value',
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Remove value field',
+                            icon: const Icon(Icons.close),
+                            onPressed: () => update(() => fields.remove(field)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () => update(
+                        () => fields.add(_ValueField(nextFieldId++, '')),
+                      ),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add value'),
+                    ),
                   ),
+                ],
                 if (validation != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
                       validation!,
                       style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
+                        color: Theme.of(dialog).colorScheme.error,
                       ),
                     ),
                   ),
@@ -102,7 +149,7 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(dialog),
               child: const Text('Cancel'),
             ),
             FilledButton(
@@ -112,11 +159,10 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
                   return;
                 }
                 Navigator.pop(
-                  context,
-                  _Draft(
-                    draftName.trim(),
-                    current is String ? draftValue : current,
-                  ),
+                  dialog,
+                  _Draft(draftName.trim(), [
+                    for (final field in fields) field.text,
+                  ]),
                 );
               },
               child: const Text('Save'),
@@ -127,44 +173,60 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
     );
   }
 
-  Future<void> add(List<Object> parentPath, {Object initial = ''}) async {
-    final parent = widget.document.at(parentPath);
-    final draft = await editDialog(
-      isNew: true,
-      current: initial,
-      requireKey: parent is Map,
-    );
+  Future<void> add(List<Object> path) async {
+    final current = widget.document.at(path);
+    if (current is List || current is String && current.isNotEmpty) {
+      // Adding to a valued key appends one value through the same editor.
+      await edit(
+        path,
+        path.isNotEmpty && path.last is String ? path.last as String : '',
+        current,
+        appendField: true,
+      );
+      return;
+    }
+    final draft = await editDialog(isNew: true, requireKey: true);
     if (draft == null) return;
     try {
-      await save(widget.document.add(parentPath, draft.name, draft.value));
-    } catch (e) {
-      showError(e);
+      await save(widget.document.addKey(path, draft.name, draft.fields));
+    } catch (error) {
+      showError(error);
     }
   }
 
-  Future<void> edit(List<Object> path, String label, Object? current) async {
+  Future<void> edit(
+    List<Object> path,
+    String name,
+    Object? current, {
+    bool appendField = false,
+  }) async {
+    if (path.isEmpty) return;
     final parent = widget.document.at(path.sublist(0, path.length - 1));
     final draft = await editDialog(
-      name: label,
+      name: name,
       current: current,
       requireKey: parent is Map,
+      appendField: appendField,
     );
     if (draft == null) return;
     try {
+      final value = current is Map<String, dynamic>
+          ? current
+          : JsonDocument.valueFromFields(draft.fields);
       await save(
         widget.document.update(
           path,
-          draft.value,
+          value,
           newKey: parent is Map ? draft.name : null,
         ),
       );
-    } catch (e) {
-      showError(e);
+    } catch (error) {
+      showError(error);
     }
   }
 
   Future<void> delete(List<Object> path, String label) async {
-    final yes = await showDialog<bool>(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialog) => AlertDialog(
         title: Text('Delete $label?'),
@@ -180,50 +242,75 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
         ],
       ),
     );
-    if (yes != true) return;
+    if (confirmed != true) return;
     try {
       await save(widget.document.delete(path));
-    } catch (e) {
-      showError(e);
+    } catch (error) {
+      showError(error);
     }
   }
 
   Future<void> reorder(List<Object> path, int index, int offset) async {
     try {
       await save(widget.document.reorder(path, index, index + offset));
-    } catch (e) {
-      showError(e);
+    } catch (error) {
+      showError(error);
     }
   }
 
   Widget action(IconData icon, String tooltip, VoidCallback callback) =>
       IconButton(
-        icon: Icon(icon, size: 19),
+        icon: Icon(icon, size: 18),
         tooltip: tooltip,
         onPressed: busy ? null : callback,
-        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-        padding: const EdgeInsets.all(5),
+        constraints: const BoxConstraints(minWidth: 30, minHeight: 32),
+        padding: const EdgeInsets.all(4),
         visualDensity: VisualDensity.compact,
       );
+
+  Widget _values(Object value, Color background) {
+    final strings = value is List
+        ? value.cast<String>()
+        : <String>[value as String];
+    if (strings.isEmpty) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final text in strings)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: SelectableText(
+                text,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 
   Widget entry(
     List<Object> path,
     String label,
-    Object? value,
+    Object value,
     int index,
     int count,
   ) {
     final color = Theme.of(context).colorScheme;
-    final nested = value is Map<String, dynamic> || value is List;
+    final isObject = value is Map<String, dynamic>;
     final id = jsonEncode(path);
     final expanded = !collapsed.contains(id);
     final parent = path.sublist(0, path.length - 1);
-    final children = value is Map<String, dynamic>
-        ? value.entries.toList()
-        : null;
-    final array = value is List ? value : null;
+    final children = isObject ? value.entries.toList() : null;
     return Card(
-      key: ValueKey('json-${jsonEncode(path)}'),
+      key: ValueKey('json-$id'),
       elevation: 0,
       color: color.surface,
       margin: const EdgeInsets.symmetric(vertical: 2),
@@ -236,113 +323,53 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (nested || label.isNotEmpty)
-              Row(
-                children: [
-                  if (nested)
-                    action(
-                      expanded ? Icons.expand_more : Icons.chevron_right,
-                      label.isEmpty ? 'Toggle entry' : 'Toggle $label',
-                      () => setState(() {
-                        if (!collapsed.remove(id)) collapsed.add(id);
-                      }),
-                    ),
-                  if (label.isNotEmpty)
-                    Expanded(
-                      child: Text(
-                        label,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                    ),
-                ],
-              ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Wrap(
-                alignment: WrapAlignment.end,
-                spacing: 0,
-                runSpacing: 0,
-                children: [
-                  if (index > 0)
-                    action(
-                      Icons.arrow_upward,
-                      'Move value up',
-                      () => reorder(parent, index, -1),
-                    ),
-                  if (index + 1 < count)
-                    action(
-                      Icons.arrow_downward,
-                      'Move value down',
-                      () => reorder(parent, index, 1),
-                    ),
-                  if (nested)
-                    action(
-                      Icons.add,
-                      'Add value${label.isEmpty ? '' : ' to $label'}',
-                      () => add(path),
-                    ),
-                  if (value is Map<String, dynamic>) ...[
-                    action(
-                      Icons.account_tree_outlined,
-                      'Add section to $label',
-                      () => add(path, initial: <String, dynamic>{}),
-                    ),
-                    action(
-                      Icons.format_list_bulleted,
-                      'Add list to $label',
-                      () => add(path, initial: <String>[]),
-                    ),
-                  ],
+            // Title and actions are always on one line; key gets remaining width.
+            Row(
+              children: [
+                if (isObject)
                   action(
-                    Icons.edit_outlined,
-                    label.isEmpty ? 'Edit value' : 'Edit $label',
-                    () => edit(path, label, value),
+                    expanded ? Icons.expand_more : Icons.chevron_right,
+                    'Toggle $label',
+                    () => setState(() {
+                      if (!collapsed.remove(id)) collapsed.add(id);
+                    }),
                   ),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                if (index > 0)
                   action(
-                    Icons.delete_outline,
-                    label.isEmpty ? 'Delete value' : 'Delete $label',
-                    () => delete(path, label.isEmpty ? 'value' : label),
+                    Icons.arrow_upward,
+                    'Move $label up',
+                    () => reorder(parent, index, -1),
                   ),
-                ],
-              ),
+                if (index + 1 < count)
+                  action(
+                    Icons.arrow_downward,
+                    'Move $label down',
+                    () => reorder(parent, index, 1),
+                  ),
+                action(Icons.add, 'Add to $label', () => add(path)),
+                action(
+                  Icons.edit_outlined,
+                  'Edit $label',
+                  () => edit(path, label, value),
+                ),
+                action(
+                  Icons.delete_outline,
+                  'Delete $label',
+                  () => delete(path, label.isEmpty ? 'value' : label),
+                ),
+              ],
             ),
-            if (value is String)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: color.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: SelectableText(
-                        value,
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                    action(
-                      Icons.copy_outlined,
-                      label.isEmpty ? 'Copy value' : 'Copy $label',
-                      () {
-                        Clipboard.setData(ClipboardData(text: value));
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            if (nested && expanded)
+            if (!isObject) _values(value, color.surfaceContainerHighest),
+            if (isObject && expanded)
               Padding(
-                // Each level needs only a few pixels beyond the parent border.
-                // The child Card already draws its own outline; a second
-                // indented border wastes horizontal space on deep JSON trees.
                 padding: const EdgeInsets.only(left: 1),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -356,10 +383,7 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
                           i,
                           children.length,
                         ),
-                    if (array != null)
-                      for (var i = 0; i < array.length; i++)
-                        entry([...path, i], '', array[i], i, array.length),
-                    if ((children?.isEmpty ?? array?.isEmpty ?? false))
+                    if (children?.isEmpty ?? false)
                       const Padding(
                         padding: EdgeInsets.all(8),
                         child: Text('Empty'),
@@ -375,14 +399,14 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
 
   @override
   Widget build(BuildContext context) {
-    final entries = widget.document.data.entries
+    final all = widget.document.data.entries.toList();
+    final entries = all
         .where(
-          (e) =>
+          (entry) =>
               filter.isEmpty ||
-              e.key.toLowerCase().contains(filter.toLowerCase()),
+              entry.key.toLowerCase().contains(filter.toLowerCase()),
         )
         .toList();
-    final all = widget.document.data.entries.toList();
     return Column(
       children: [
         if (busy) const LinearProgressIndicator(),
@@ -398,39 +422,31 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
                     border: InputBorder.none,
                     prefixIcon: Icon(Icons.search),
                   ),
-                  onChanged: (s) => setState(() => filter = s),
+                  onChanged: (text) => setState(() => filter = text),
                 ),
               ),
-              action(Icons.add, 'Add value', () => add([])),
-              action(
-                Icons.account_tree_outlined,
-                'Add section',
-                () => add([], initial: <String, dynamic>{}),
-              ),
-              action(
-                Icons.format_list_bulleted,
-                'Add list',
-                () => add([], initial: <String>[]),
-              ),
+              action(Icons.add, 'Add entry', () => add([])),
             ],
           ),
         ),
         Expanded(
           child: ListView(
             padding: const EdgeInsets.symmetric(horizontal: 10),
-            children: [
-              for (final e in entries)
-                entry(
-                  [e.key],
-                  e.key,
-                  e.value,
-                  all.indexWhere((x) => x.key == e.key),
-                  all.length,
-                ),
-            ],
+            children: [for (final entry in entries) entryWidget(entry, all)],
           ),
         ),
       ],
     );
   }
+
+  Widget entryWidget(
+    MapEntry<String, dynamic> item,
+    List<MapEntry<String, dynamic>> all,
+  ) => entry(
+    [item.key],
+    item.key,
+    item.value,
+    all.indexWhere((entry) => entry.key == item.key),
+    all.length,
+  );
 }

@@ -5,7 +5,7 @@ Flutter vault for hierarchical **JSON** data stored in Google Drive. Android and
 ## File behavior
 
 - `.json`: parsed as a native JSON object, with expandable nested sections and lists. Edit/add/delete keys or values, reorder entries, copy text, and save the resulting document to Drive. **Every leaf value is a string**; numbers, booleans and null are rejected rather than silently converted.
-- The editor shows neither value-type labels nor array indices. There is no type picker. Add value always creates a string; separate section/list actions create structural containers.
+- Each key has one **Add** button. The Add/Edit dialog accepts zero or more Value fields: zero → `""`, one → a string, and two or more → an array of strings. Adding a child beneath an empty-string key turns it into a nested object; existing nonempty values are preserved. Values have no individual toolbar. The key title and its action toolbar are on the same horizontal line, and the UI shows no type labels or array indices.
 - `.md`: displayed as **raw source only**; the app does not render it as Markdown or use a Markdown block parser in the editor. Tap the file's `⋮` menu (or long-press its row) and choose **Convert to JSON**.
 - Every file and folder has a three-dot menu with icon + text actions. Markdown files additionally have **Convert to JSON**.
 - JSON files are saved with **2-space indentation** and a final newline (`JsonEncoder.withIndent('  ')`). They are plain JSON, with no custom `format`, `version`, `blocks` or `sourceMarkdown` wrapper.
@@ -42,7 +42,7 @@ creates the following **formatted** file:
 }
 ```
 
-Ordinary multiline fenced code is supported, with its indentation normalized. If syntax cannot be represented safely in the requested structure, conversion reports a line-specific error instead of silently discarding text. Duplicate keys are rejected.
+Ordinary multiline fenced code is supported, with its indentation normalized. Headings/items with no values become empty strings, and those with one value become strings. If syntax cannot be represented safely in the requested structure, conversion reports a line-specific error instead of silently discarding text. Duplicate keys are rejected.
 
 Conversion creates a separate `.json` sibling, verifies its contents and **preserves the original `.md`**. An existing JSON sibling is never overwritten. You can also convert a folder and its subfolders sequentially; conflicts are reported.
 

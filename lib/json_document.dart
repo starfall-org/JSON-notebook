@@ -68,6 +68,49 @@ class JsonDocument {
     return JsonDocument._(copy);
   }
 
+  /// Build a leaf from the number of value fields entered in Add/Edit.
+  /// Zero fields: empty string. One: string. Two or more: string list.
+  static Object valueFromFields(List<String> fields) => switch (fields.length) {
+    0 => '',
+    1 => fields.single,
+    _ => List<String>.of(fields),
+  };
+
+  /// Insert a child key. An empty string may be promoted to a container on
+  /// first child insertion; nonempty values cannot be replaced implicitly.
+  JsonDocument addKey(
+    List<Object> parentPath,
+    String key,
+    List<String> fields,
+  ) => _change((copy) {
+    var parent = _lookup(copy, parentPath);
+    if (parent is String && parent.isEmpty && parentPath.isNotEmpty) {
+      final ancestor = _lookup(
+        copy,
+        parentPath.sublist(0, parentPath.length - 1),
+      );
+      final parentKey = parentPath.last;
+      if (ancestor is! Map<String, dynamic> || parentKey is! String) {
+        throw const FormatException('Cannot create a child here');
+      }
+      parent = <String, dynamic>{};
+      ancestor[parentKey] = parent;
+    }
+    if (parent is! Map<String, dynamic>) {
+      throw const FormatException(
+        'Edit values here; this key cannot contain children',
+      );
+    }
+    final name = key.trim();
+    if (name.isEmpty) {
+      throw const FormatException('Key cannot be empty');
+    }
+    if (parent.containsKey(name)) {
+      throw FormatException('Key already exists: $name');
+    }
+    parent[name] = valueFromFields(fields);
+  });
+
   JsonDocument add(List<Object> parentPath, String? key, Object? value) =>
       _change((copy) {
         final parent = _lookup(copy, parentPath);
