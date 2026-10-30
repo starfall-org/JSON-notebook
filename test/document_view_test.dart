@@ -204,6 +204,102 @@ void main() {
     expect(find.byTooltip('Add list to Parent'), findsNothing);
   });
 
+  testWidgets('Delete lives inside Edit and requires confirmation', (
+    tester,
+  ) async {
+    var doc = JsonDocument.parse('{"A":"value","B":{"C":"keep"}}');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, update) => JsonDocumentView(
+              document: doc,
+              onSave: (next) async {
+                update(() => doc = next);
+                return true;
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Delete A'), findsNothing);
+    expect(find.byTooltip('Delete B'), findsNothing);
+    await tester.tap(find.byTooltip('Edit A'));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete'), findsOneWidget);
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete A?'), findsOneWidget);
+    expect(doc.at(['A']), 'value');
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(doc.at(['A']), 'value');
+
+    await tester.tap(find.byTooltip('Edit A'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+    expect(doc.data, {
+      'B': {'C': 'keep'},
+    });
+    expect(find.text('A'), findsNothing);
+  });
+
+  testWidgets('Delete in nested Edit removes only selected branch', (
+    tester,
+  ) async {
+    var doc = JsonDocument.parse(
+      '{"A":{"B":"remove","C":"retain"},"D":"other"}',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, update) => JsonDocumentView(
+              document: doc,
+              onSave: (next) async {
+                update(() => doc = next);
+                return true;
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Edit B'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+    expect(doc.data, {
+      'A': {'C': 'retain'},
+      'D': 'other',
+    });
+  });
+
+  testWidgets('Add dialog does not expose Delete', (tester) async {
+    final doc = JsonDocument.empty();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: JsonDocumentView(document: doc, onSave: (_) async => true),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Add entry'));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete'), findsNothing);
+    expect(find.text('Save'), findsOneWidget);
+  });
+
   testWidgets(
     'Add on a populated key appends a value through the same editor',
     (tester) async {

@@ -24,9 +24,10 @@ class _ValueField {
 }
 
 class _Draft {
-  const _Draft(this.name, this.fields);
+  const _Draft(this.name, this.fields, {this.delete = false});
   final String name;
   final List<String> fields;
+  final bool delete;
 }
 
 class _JsonDocumentViewState extends State<JsonDocumentView> {
@@ -148,6 +149,16 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
             ),
           ),
           actions: [
+            if (!isNew)
+              TextButton.icon(
+                onPressed: () =>
+                    Navigator.pop(dialog, const _Draft('', [], delete: true)),
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('Delete'),
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(dialog).colorScheme.error,
+                ),
+              ),
             TextButton(
               onPressed: () => Navigator.pop(dialog),
               child: const Text('Cancel'),
@@ -209,6 +220,10 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
       appendField: appendField,
     );
     if (draft == null) return;
+    if (draft.delete) {
+      await delete(path, name.isEmpty ? 'value' : name);
+      return;
+    }
     try {
       final value = current is Map<String, dynamic>
           ? current
@@ -359,11 +374,6 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
                   Icons.edit_outlined,
                   'Edit $label',
                   () => edit(path, label, value),
-                ),
-                action(
-                  Icons.delete_outline,
-                  'Delete $label',
-                  () => delete(path, label.isEmpty ? 'value' : label),
                 ),
               ],
             ),
