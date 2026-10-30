@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+enum JsonDropPosition { before, inside, after }
+
 /// A vault document is a plain JSON object: no Markdown block wrapper.
 class JsonDocument {
   JsonDocument._(this.data);
@@ -190,6 +192,117 @@ class JsonDocument {
       throw StateError('Invalid JSON path: $path');
     }
   });
+
+  /// Check whether [sourcePath] can move to [targetPath] without losing data.
+  /// Only named object entries can be dragged; array values remain atomic.
+  bool canMoveKey(
+    List<Object> sourcePath,
+    List<Object> targetPath,
+    JsonDropPosition position,
+  ) {
+    if (sourcePath.isEmpty ||
+        targetPath.isEmpty ||
+        sourcePath.any((part) => part is! String) ||
+        targetPath.any((part) => part is! String)) {
+      return false;
+    }
+    // A key cannot contain itself or any of its descendants.
+    if (targetPath.length >= sourcePath.length &&
+        _samePath(sourcePath, targetPath.take(sourcePath.length).toList())) {
+      return false;
+    }
+    try {
+      final sourceParentPath = sourcePath.sublist(0, sourcePath.length - 1);
+      final sourceParent = _lookup(data, sourceParentPath);
+      final target = _lookup(data, targetPath);
+      final destinationPath = position == JsonDropPosition.inside
+          ? targetPath
+          : targetPath.sublist(0, targetPath.length - 1);
+      final destination = _lookup(data, destinationPath);
+      final sourceKey = sourcePath.last as String;
+      if (sourceParent is! Map<String, dynamic> ||
+          !sourceParent.containsKey(sourceKey)) {
+        return false;
+      }
+      if (position == JsonDropPosition.inside &&
+          destination is! Map<String, dynamic> &&
+          destination != '') {
+        return false;
+      }
+      if (position != JsonDropPosition.inside &&
+          (destination is! Map<String, dynamic> || target == null)) {
+        return false;
+      }
+      if (destination is Map<String, dynamic> &&
+          !_samePath(sourceParentPath, destinationPath) &&
+          destination.containsKey(sourceKey)) {
+        return false;
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static bool _samePath(List<Object> a, List<Object> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  /// Move one entire key subtree. Validation occurs before cloning, and
+  /// insertion always retains the original key/value pair unchanged.
+  JsonDocument moveKey(
+    List<Object> sourcePath,
+    List<Object> targetPath,
+    JsonDropPosition position,
+  ) {
+    if (!canMoveKey(sourcePath, targetPath, position)) {
+      throw const FormatException(
+        'Cannot move this key to the selected location',
+      );
+    }
+    return _change((copy) {
+      final sourceParentPath = sourcePath.sublist(0, sourcePath.length - 1);
+      final sourceParent =
+          _lookup(copy, sourceParentPath) as Map<String, dynamic>;
+      final sourceKey = sourcePath.last as String;
+      final sourceValue = sourceParent.remove(sourceKey);
+      if (position == JsonDropPosition.inside) {
+        var destination = _lookup(copy, targetPath);
+        if (destination is String && destination.isEmpty) {
+          final targetParent = _lookup(
+            copy,
+            targetPath.sublist(0, targetPath.length - 1),
+          ) as Map<String, dynamic>;
+          destination = <String, dynamic>{};
+          targetParent[targetPath.last as String] = destination;
+        }
+        (destination as Map<String, dynamic>)[sourceKey] = sourceValue;
+      } else {
+        final targetKey = targetPath.last as String;
+        final destination = _lookup(
+          copy,
+          targetPath.sublist(0, targetPath.length - 1),
+        ) as Map<String, dynamic>;
+        final ordered = <String, dynamic>{};
+        for (final entry in destination.entries) {
+          if (position == JsonDropPosition.before && entry.key == targetKey) {
+            ordered[sourceKey] = sourceValue;
+          }
+          ordered[entry.key] = entry.value;
+          if (position == JsonDropPosition.after && entry.key == targetKey) {
+            ordered[sourceKey] = sourceValue;
+          }
+        }
+        destination
+          ..clear()
+          ..addAll(ordered);
+      }
+    });
+  }
 
   /// Reorder within the same object/array without changing its contents.
   JsonDocument reorder(List<Object> parentPath, int from, int to) => _change((

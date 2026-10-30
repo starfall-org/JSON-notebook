@@ -22,6 +22,11 @@ class JsonDocumentView extends StatefulWidget {
   JsonDocumentViewState createState() => JsonDocumentViewState();
 }
 
+class _JsonKeyDrag {
+  _JsonKeyDrag(List<Object> path) : path = List<Object>.unmodifiable(path);
+  final List<Object> path;
+}
+
 class _ValueField {
   _ValueField(this.id, this.text);
   final int id;
@@ -38,11 +43,15 @@ class _Draft {
 class JsonDocumentViewState extends State<JsonDocumentView> {
   bool busy = false;
   final Set<String> collapsed = {};
+  String? draggingId;
 
   @override
   void didUpdateWidget(covariant JsonDocumentView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.documentId != widget.documentId) collapsed.clear();
+    if (oldWidget.documentId != widget.documentId) {
+      collapsed.clear();
+      draggingId = null;
+    }
   }
 
   Future<void> addRootEntry() => add([]);
@@ -317,6 +326,103 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
         visualDensity: VisualDensity.compact,
       );
 
+  bool get _dragEnabled => !busy && widget.searchQuery.trim().isEmpty;
+
+  void _finishDrag() {
+    if (mounted && draggingId != null) {
+      setState(() => draggingId = null);
+    }
+  }
+
+  JsonDropPosition _dropMode(
+    Object value,
+    Offset globalPosition,
+    BuildContext? dropContext,
+  ) {
+    final render = dropContext?.findRenderObject();
+    if (render is! RenderBox || render.size.height == 0) {
+      return JsonDropPosition.before;
+    }
+    final fraction =
+        render.globalToLocal(globalPosition).dy / render.size.height;
+    final canNest =
+        value is Map<String, dynamic> || value is String && value.isEmpty;
+    if (canNest) {
+      if (fraction < 0.32) return JsonDropPosition.before;
+      if (fraction > 0.68) return JsonDropPosition.after;
+      return JsonDropPosition.inside;
+    }
+    return fraction < 0.5 ? JsonDropPosition.before : JsonDropPosition.after;
+  }
+
+  Future<void> _dropKey(
+    _JsonKeyDrag source,
+    List<Object> destination,
+    JsonDropPosition mode,
+  ) async {
+    if (!_dragEnabled) return;
+    try {
+      final saved = await save(
+        widget.document.moveKey(source.path, destination, mode),
+      );
+      if (saved && mode == JsonDropPosition.inside && mounted) {
+        setState(() => collapsed.remove(jsonEncode(destination)));
+      }
+    } catch (error) {
+      showError(error);
+    }
+  }
+
+  Widget _dragHandle(
+    List<Object> path,
+    String label,
+    String id,
+    ColorScheme color,
+  ) {
+    return LongPressDraggable<_JsonKeyDrag>(
+      dragAnchorStrategy: pointerDragAnchorStrategy,
+      data: _JsonKeyDrag(path),
+      maxSimultaneousDrags: _dragEnabled ? 1 : 0,
+      onDragStarted: () => setState(() => draggingId = id),
+      onDragEnd: (_) => _finishDrag(),
+      feedback: Material(
+        color: color.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(9),
+        elevation: 5,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.drag_indicator, size: 20),
+              const SizedBox(width: 6),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 180),
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      childWhenDragging: const SizedBox(width: 29, height: 32),
+      child: Semantics(
+        label: 'Drag $label',
+        child: Padding(
+          padding: const EdgeInsets.all(5),
+          child: Icon(
+            Icons.drag_indicator,
+            size: 19,
+            color: color.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _values(Object value, Color background) {
     final strings = value is List
         ? value.cast<String>()
@@ -371,6 +477,7 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
               )
               .toList()
         : null;
+    BuildContext? dropContext;
     return Card(
       key: ValueKey('json-$id'),
       elevation: 0,
@@ -380,77 +487,126 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
         borderRadius: BorderRadius.circular(8),
         side: BorderSide(color: color.outlineVariant),
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Title and actions are always on one line; key gets remaining width.
-            Row(
-              children: [
-                if (isObject)
-                  action(
-                    expanded ? Icons.expand_more : Icons.chevron_right,
-                    'Toggle $label',
-                    () => setState(() {
-                      if (!collapsed.remove(id)) collapsed.add(id);
-                    }),
-                  ),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                ),
-                if (index > 0)
-                  action(
-                    Icons.arrow_upward,
-                    'Move $label up',
-                    () => reorder(parent, index, -1),
-                  ),
-                if (index + 1 < count)
-                  action(
-                    Icons.arrow_downward,
-                    'Move $label down',
-                    () => reorder(parent, index, 1),
-                  ),
-                if (isObject || (value is String && value.isEmpty))
-                  action(Icons.add, 'Add to $label', () => add(path)),
-                action(
-                  Icons.edit_outlined,
-                  'Edit $label',
-                  () => edit(path, label, value),
-                ),
-              ],
-            ),
-            if (!isObject) _values(value, color.surfaceContainerHighest),
-            if (isObject && expanded)
-              Padding(
-                padding: const EdgeInsets.only(left: 1),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (children != null)
-                      for (var i = 0; i < children.length; i++)
-                        entry(
-                          [...path, children[i].key],
-                          children[i].key,
-                          children[i].value,
-                          i,
-                          children.length,
-                          showAllChildren: includeAll,
+      child: AnimatedOpacity(
+        opacity: draggingId == id ? 0.12 : 1,
+        duration: const Duration(milliseconds: 100),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Only the header is a drop target: descendants retain independent
+              // targets without parent hit boxes swallowing nested drags.
+              DragTarget<_JsonKeyDrag>(
+                key: ValueKey('json-drop-$id'),
+                onWillAcceptWithDetails: (details) {
+                  if (!_dragEnabled) return false;
+                  return [
+                    JsonDropPosition.before,
+                    JsonDropPosition.after,
+                    if (isObject || value is String && value.isEmpty)
+                      JsonDropPosition.inside,
+                  ].any(
+                    (mode) => widget.document.canMoveKey(
+                      details.data.path,
+                      path,
+                      mode,
+                    ),
+                  );
+                },
+                onAcceptWithDetails: (details) {
+                  final mode = _dropMode(value, details.offset, dropContext);
+                  _dropKey(details.data, path, mode);
+                },
+                builder: (context, candidates, rejected) => Builder(
+                  builder: (headerContext) {
+                    dropContext = headerContext;
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 100),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(6),
+                        color: candidates.isEmpty
+                            ? Colors.transparent
+                            : color.primaryContainer,
+                        border: Border.all(
+                          color: candidates.isEmpty
+                              ? Colors.transparent
+                              : color.primary,
                         ),
-                    if (children?.isEmpty ?? false)
-                      const Padding(
-                        padding: EdgeInsets.all(8),
-                        child: Text('Empty'),
                       ),
-                  ],
+                      child: Row(
+                        children: [
+                          _dragHandle(path, label, id, color),
+                          if (isObject)
+                            action(
+                              expanded
+                                  ? Icons.expand_more
+                                  : Icons.chevron_right,
+                              'Toggle $label',
+                              () => setState(() {
+                                if (!collapsed.remove(id)) collapsed.add(id);
+                              }),
+                            ),
+                          Expanded(
+                            child: Text(
+                              label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
+                          ),
+                          if (index > 0)
+                            action(
+                              Icons.arrow_upward,
+                              'Move $label up',
+                              () => reorder(parent, index, -1),
+                            ),
+                          if (index + 1 < count)
+                            action(
+                              Icons.arrow_downward,
+                              'Move $label down',
+                              () => reorder(parent, index, 1),
+                            ),
+                          if (isObject || (value is String && value.isEmpty))
+                            action(Icons.add, 'Add to $label', () => add(path)),
+                          action(
+                            Icons.edit_outlined,
+                            'Edit $label',
+                            () => edit(path, label, value),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               ),
-          ],
+              if (!isObject) _values(value, color.surfaceContainerHighest),
+              if (isObject && expanded)
+                Padding(
+                  padding: const EdgeInsets.only(left: 1),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (children != null)
+                        for (var i = 0; i < children.length; i++)
+                          entry(
+                            [...path, children[i].key],
+                            children[i].key,
+                            children[i].value,
+                            i,
+                            children.length,
+                            showAllChildren: includeAll,
+                          ),
+                      if (children?.isEmpty ?? false)
+                        const Padding(
+                          padding: EdgeInsets.all(8),
+                          child: Text('Empty'),
+                        ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
