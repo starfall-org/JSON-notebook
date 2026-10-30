@@ -4,6 +4,56 @@ import 'package:secrets_keep/document_view.dart';
 import 'package:secrets_keep/json_document.dart';
 
 void main() {
+  testWidgets('Search reveals nested matching keys and values, not siblings', (
+    tester,
+  ) async {
+    final query = ValueNotifier<String>('');
+    addTearDown(query.dispose);
+    final doc = JsonDocument.parse(
+      '{"Alpha":{"Child":{"Token":["SECRET-ONE","different"]},"Ignore":"hidden"},"Beta":"plain"}',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ValueListenableBuilder<String>(
+            valueListenable: query,
+            builder: (context, value, _) => JsonDocumentView(
+              document: doc,
+              searchQuery: value,
+              onSave: (_) async => true,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // Closed sections automatically expand while their descendants match.
+    await tester.tap(find.byTooltip('Toggle Alpha'));
+    await tester.pumpAndSettle();
+    expect(find.text('Token'), findsNothing);
+    query.value = '  secret-one ';
+    await tester.pumpAndSettle();
+    expect(find.text('Alpha'), findsOneWidget);
+    expect(find.text('Child'), findsOneWidget);
+    expect(find.text('Token'), findsOneWidget);
+    expect(find.text('SECRET-ONE'), findsOneWidget);
+    expect(find.text('Ignore'), findsNothing);
+    expect(find.text('Beta'), findsNothing);
+    query.value = 'token';
+    await tester.pumpAndSettle();
+    expect(find.text('Token'), findsOneWidget);
+    query.value = 'ALPHA';
+    await tester.pumpAndSettle();
+    expect(find.text('Ignore'), findsOneWidget);
+    query.value = 'not-found';
+    await tester.pumpAndSettle();
+    expect(find.text('No matching entries'), findsOneWidget);
+    query.value = '';
+    await tester.pumpAndSettle();
+    expect(find.text('Beta'), findsOneWidget);
+    expect(find.text('Token'), findsNothing); // Restores prior collapse.
+  });
+
   testWidgets(
     'Deep borders remain close and toolbar stays level with key title',
     (tester) async {
@@ -95,7 +145,9 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.byTooltip('Add entry'));
+      tester
+          .state<JsonDocumentViewState>(find.byType(JsonDocumentView))
+          .addRootEntry();
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const ValueKey('json-key-input')), 'A');
       expect(find.byKey(const ValueKey('json-value-0')), findsNothing);
@@ -137,7 +189,9 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.byTooltip('Add entry'));
+      tester
+          .state<JsonDocumentViewState>(find.byType(JsonDocumentView))
+          .addRootEntry();
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const ValueKey('json-key-input')), 'D');
       await tester.tap(find.text('Add value'));
@@ -180,7 +234,9 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.byTooltip('Add entry'));
+    tester
+        .state<JsonDocumentViewState>(find.byType(JsonDocumentView))
+        .addRootEntry();
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const ValueKey('json-key-input')),
@@ -202,6 +258,34 @@ void main() {
     expect(find.byTooltip('Add to Parent'), findsOneWidget);
     expect(find.byTooltip('Add section to Parent'), findsNothing);
     expect(find.byTooltip('Add list to Parent'), findsNothing);
+  });
+
+  testWidgets('Edit dialog buttons stay on one horizontal row at 320px', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final doc = JsonDocument.parse('{"A":"example"}');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: JsonDocumentView(document: doc, onSave: (_) async => true),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Edit A'));
+    await tester.pumpAndSettle();
+    final deleteRect = tester.getRect(find.text('Delete'));
+    final cancelRect = tester.getRect(find.text('Cancel'));
+    final saveRect = tester.getRect(find.text('Save'));
+    expect(deleteRect.right, lessThan(cancelRect.left));
+    expect(cancelRect.right, lessThan(saveRect.left));
+    expect((deleteRect.center.dy - cancelRect.center.dy).abs(), lessThan(3));
+    expect((cancelRect.center.dy - saveRect.center.dy).abs(), lessThan(3));
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('Delete lives inside Edit and requires confirmation', (
@@ -294,7 +378,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Add entry'));
+    tester
+        .state<JsonDocumentViewState>(find.byType(JsonDocumentView))
+        .addRootEntry();
     await tester.pumpAndSettle();
     expect(find.text('Delete'), findsNothing);
     expect(find.text('Save'), findsOneWidget);

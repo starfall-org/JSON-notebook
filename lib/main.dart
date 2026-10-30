@@ -76,6 +76,7 @@ class VaultScreen extends StatefulWidget {
 
 class _VaultScreenState extends State<VaultScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
+  final _documentKey = GlobalKey<JsonDocumentViewState>();
   final google = GoogleSignIn(
     scopes: [driveScope],
     serverClientId: googleWebClientId,
@@ -132,6 +133,7 @@ class _VaultScreenState extends State<VaultScreen> {
         entries = items;
         openFile = null;
         activeDocument = null;
+        _resetSearch();
       });
     }
   });
@@ -144,6 +146,39 @@ class _VaultScreenState extends State<VaultScreen> {
     }
   }
 
+  void _resetSearch() {
+    search = false;
+    query = '';
+    searchController.clear();
+  }
+
+  void _toggleSearch() {
+    setState(() {
+      if (search) {
+        _resetSearch();
+        FocusManager.instance.primaryFocus?.unfocus();
+      } else {
+        _resetSearch();
+        search = true;
+      }
+    });
+  }
+
+  void _openFolders() => _scaffoldKey.currentState?.openDrawer();
+
+  void _moreAction(String action) {
+    switch (action) {
+      case 'folders':
+        _openFolders();
+      case 'migrate':
+        _migrateFolder();
+      case 'theme':
+        _cycleTheme();
+      case 'logout':
+        _logout();
+    }
+  }
+
   Future<void> _open(DriveEntry entry) => _run(() async {
     if (entry.isFolder) {
       final children = await store!.children(entry.id);
@@ -151,8 +186,7 @@ class _VaultScreenState extends State<VaultScreen> {
         setState(() {
           path.add(entry);
           entries = children;
-          search = false;
-          query = '';
+          _resetSearch();
         });
       }
     } else {
@@ -164,6 +198,7 @@ class _VaultScreenState extends State<VaultScreen> {
           activeDocument = entry.name.toLowerCase().endsWith('.json')
               ? JsonDocument.parse(text)
               : null;
+          _resetSearch();
         });
       }
     }
@@ -173,6 +208,7 @@ class _VaultScreenState extends State<VaultScreen> {
       setState(() {
         openFile = null;
         activeDocument = null;
+        _resetSearch();
       });
       return;
     }
@@ -259,16 +295,6 @@ class _VaultScreenState extends State<VaultScreen> {
     });
   }
 
-  Widget _fileAction(IconData icon, String tooltip, VoidCallback callback) =>
-      IconButton(
-        tooltip: tooltip,
-        icon: Icon(icon, size: 20),
-        onPressed: callback,
-        visualDensity: VisualDensity.compact,
-        constraints: const BoxConstraints(minWidth: 38, minHeight: 38),
-        padding: const EdgeInsets.all(7),
-      );
-
   void _cycleTheme() {
     final next = switch (widget.themeMode) {
       ThemeMode.system => ThemeMode.light,
@@ -287,6 +313,7 @@ class _VaultScreenState extends State<VaultScreen> {
         entries = [];
         openFile = null;
         activeDocument = null;
+        _resetSearch();
       });
     }
   }
@@ -544,7 +571,14 @@ class _VaultScreenState extends State<VaultScreen> {
   ) => PopupMenuItem<String>(
     value: action,
     child: Row(
-      children: [Icon(icon, size: 20), const SizedBox(width: 12), Text(title)],
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 20),
+        const SizedBox(width: 12),
+        Flexible(
+          child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+      ],
     ),
   );
 
@@ -586,12 +620,12 @@ class _VaultScreenState extends State<VaultScreen> {
                 onFile: (folders, file) => _browseFromDrawer(folders, file),
               ),
         appBar: AppBar(
-          title: search && current == null
+          title: search && (current == null || activeDocument != null)
               ? TextField(
                   controller: searchController,
                   autofocus: true,
-                  decoration: const InputDecoration(
-                    hintText: 'Search files',
+                  decoration: InputDecoration(
+                    hintText: current == null ? 'Search files' : 'Search JSON',
                     border: InputBorder.none,
                   ),
                   onChanged: (value) => setState(() => query = value),
@@ -613,40 +647,81 @@ class _VaultScreenState extends State<VaultScreen> {
                 )
               : null,
           actions: [
-            if (store != null && (current != null || path.length > 1))
+            if (store != null && (current == null || activeDocument != null))
               IconButton(
-                tooltip: 'Folder tree',
-                icon: const Icon(Icons.account_tree_outlined),
-                onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-              ),
-            if (store != null && current == null)
-              IconButton(
-                tooltip: 'Search',
+                tooltip: search
+                    ? 'Close search'
+                    : current == null
+                    ? 'Search files'
+                    : 'Search JSON',
                 icon: Icon(search ? Icons.close : Icons.search),
-                onPressed: () => setState(() {
-                  search = !search;
-                  query = '';
-                  searchController.clear();
-                }),
+                onPressed: _toggleSearch,
               ),
-            if (current != null)
+            if (!search && activeDocument != null)
+              IconButton(
+                tooltip: 'Add entry',
+                icon: const Icon(Icons.add),
+                onPressed: () => _documentKey.currentState?.addRootEntry(),
+              ),
+            if (!search && store != null && current == null)
+              PopupMenuButton<String>(
+                tooltip: 'Add',
+                icon: const Icon(Icons.add),
+                onSelected: _create,
+                itemBuilder: (_) => [
+                  _menuOption(
+                    'folder',
+                    Icons.create_new_folder_outlined,
+                    'New folder',
+                  ),
+                  _menuOption(
+                    'md',
+                    Icons.note_add_outlined,
+                    'New Markdown file',
+                  ),
+                  _menuOption('json', Icons.data_object, 'New JSON document'),
+                ],
+              ),
+            if (!search && current != null)
               PopupMenuButton<String>(
                 tooltip: 'File options',
-                onSelected: (action) => _fileOption(action, current),
-                itemBuilder: (_) => _fileMenuItems(current),
+                onSelected: (action) => action == 'folders'
+                    ? _openFolders()
+                    : _fileOption(action, current),
+                itemBuilder: (_) => [
+                  ..._fileMenuItems(current),
+                  _menuOption(
+                    'folders',
+                    Icons.account_tree_outlined,
+                    'Browse folders',
+                  ),
+                ],
               ),
-            _fileAction(
-              switch (widget.themeMode) {
-                ThemeMode.system => Icons.brightness_auto_outlined,
-                ThemeMode.light => Icons.light_mode_outlined,
-                ThemeMode.dark => Icons.dark_mode_outlined,
-              },
-              'Theme: ${widget.themeMode.name} (tap to change)',
-              _cycleTheme,
-            ),
-            if (store is CachedVaultStore &&
-                (store! as CachedVaultStore).source is GoogleDriveStore)
-              _fileAction(Icons.logout, 'Sign out', _logout),
+            if (!search && store != null && current == null)
+              PopupMenuButton<String>(
+                tooltip: 'More',
+                onSelected: _moreAction,
+                itemBuilder: (_) => [
+                  _menuOption(
+                    'folders',
+                    Icons.account_tree_outlined,
+                    'Browse folders',
+                  ),
+                  _menuOption(
+                    'migrate',
+                    Icons.transform_outlined,
+                    'Migrate folder to JSON',
+                  ),
+                  _menuOption(
+                    'theme',
+                    Icons.brightness_auto_outlined,
+                    'Theme: ${widget.themeMode.name}',
+                  ),
+                  if (store is CachedVaultStore &&
+                      (store! as CachedVaultStore).source is GoogleDriveStore)
+                    _menuOption('logout', Icons.logout, 'Sign out'),
+                ],
+              ),
           ],
         ),
         body: Column(
@@ -661,43 +736,6 @@ class _VaultScreenState extends State<VaultScreen> {
                     child: const Text('Dismiss'),
                   ),
                 ],
-              ),
-            if (store != null && current == null)
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 2,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Files',
-                        style: Theme.of(context).textTheme.labelMedium,
-                      ),
-                    ),
-                    _fileAction(
-                      Icons.create_new_folder_outlined,
-                      'New folder',
-                      () => _create('folder'),
-                    ),
-                    _fileAction(
-                      Icons.note_add_outlined,
-                      'New Markdown file',
-                      () => _create('md'),
-                    ),
-                    _fileAction(
-                      Icons.data_object,
-                      'New JSON document',
-                      () => _create('json'),
-                    ),
-                    _fileAction(
-                      Icons.transform_outlined,
-                      'Migrate folder to JSON',
-                      _migrateFolder,
-                    ),
-                  ],
-                ),
               ),
             Expanded(
               child: store == null
@@ -732,8 +770,10 @@ class _VaultScreenState extends State<VaultScreen> {
                   : current != null
                   ? activeDocument != null
                         ? JsonDocumentView(
-                            key: ValueKey(current.id),
+                            key: _documentKey,
+                            documentId: current.id,
                             document: activeDocument!,
+                            searchQuery: search ? query : '',
                             onSave: _saveDocument,
                           )
                         : ListView(

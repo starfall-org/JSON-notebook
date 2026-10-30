@@ -3,18 +3,23 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import 'json_document.dart';
+import 'json_search.dart';
 
 class JsonDocumentView extends StatefulWidget {
   const JsonDocumentView({
     super.key,
     required this.document,
     required this.onSave,
+    this.searchQuery = '',
+    this.documentId = '',
   });
   final JsonDocument document;
   final Future<bool> Function(JsonDocument) onSave;
+  final String searchQuery;
+  final String documentId;
 
   @override
-  State<JsonDocumentView> createState() => _JsonDocumentViewState();
+  JsonDocumentViewState createState() => JsonDocumentViewState();
 }
 
 class _ValueField {
@@ -30,17 +35,17 @@ class _Draft {
   final bool delete;
 }
 
-class _JsonDocumentViewState extends State<JsonDocumentView> {
+class JsonDocumentViewState extends State<JsonDocumentView> {
   bool busy = false;
   final Set<String> collapsed = {};
-  final search = TextEditingController();
-  String filter = '';
 
   @override
-  void dispose() {
-    search.dispose();
-    super.dispose();
+  void didUpdateWidget(covariant JsonDocumentView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.documentId != widget.documentId) collapsed.clear();
   }
+
+  Future<void> addRootEntry() => add([]);
 
   Future<bool> save(JsonDocument next) async {
     if (busy || next.toJson() == widget.document.toJson()) return false;
@@ -58,7 +63,7 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
         .showSnackBar(SnackBar(content: Text('$error')));
   }
 
-  Future<_Draft?> editDialog({
+  Future<_Draft?> _editDialog({
     String name = '',
     Object? current = '',
     bool isNew = false,
@@ -82,6 +87,10 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
       builder: (dialog) => StatefulBuilder(
         builder: (dialog, update) => AlertDialog(
           title: Text(isNew ? 'Add entry' : 'Edit entry'),
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 24,
+          ),
           scrollable: true,
           content: SizedBox(
             width: 440,
@@ -148,35 +157,60 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
               ],
             ),
           ),
+          actionsPadding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
           actions: [
-            if (!isNew)
-              TextButton.icon(
-                onPressed: () =>
-                    Navigator.pop(dialog, const _Draft('', [], delete: true)),
-                icon: const Icon(Icons.delete_outline),
-                label: const Text('Delete'),
-                style: TextButton.styleFrom(
-                  foregroundColor: Theme.of(dialog).colorScheme.error,
-                ),
+            SizedBox(
+              width: double.infinity,
+              child: Row(
+                key: const ValueKey('edit-dialog-actions'),
+                children: [
+                  if (!isNew)
+                    TextButton(
+                      onPressed: () => Navigator.pop(
+                        dialog,
+                        const _Draft('', [], delete: true),
+                      ),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Theme.of(dialog).colorScheme.error,
+                        padding: const EdgeInsets.symmetric(horizontal: 5),
+                        minimumSize: const Size(0, 36),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text('Delete'),
+                    ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialog),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 7),
+                      minimumSize: const Size(0, 36),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 4),
+                  FilledButton(
+                    onPressed: () {
+                      if (requireKey && draftName.trim().isEmpty) {
+                        update(() => validation = 'Key cannot be empty');
+                        return;
+                      }
+                      Navigator.pop(
+                        dialog,
+                        _Draft(draftName.trim(), [
+                          for (final field in fields) field.text,
+                        ]),
+                      );
+                    },
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      minimumSize: const Size(0, 36),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text('Save'),
+                  ),
+                ],
               ),
-            TextButton(
-              onPressed: () => Navigator.pop(dialog),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (requireKey && draftName.trim().isEmpty) {
-                  update(() => validation = 'Key cannot be empty');
-                  return;
-                }
-                Navigator.pop(
-                  dialog,
-                  _Draft(draftName.trim(), [
-                    for (final field in fields) field.text,
-                  ]),
-                );
-              },
-              child: const Text('Save'),
             ),
           ],
         ),
@@ -196,7 +230,7 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
       );
       return;
     }
-    final draft = await editDialog(isNew: true, requireKey: true);
+    final draft = await _editDialog(isNew: true, requireKey: true);
     if (draft == null) return;
     try {
       await save(widget.document.addKey(path, draft.name, draft.fields));
@@ -213,7 +247,7 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
   }) async {
     if (path.isEmpty) return;
     final parent = widget.document.at(path.sublist(0, path.length - 1));
-    final draft = await editDialog(
+    final draft = await _editDialog(
       name: name,
       current: current,
       requireKey: parent is Map,
@@ -316,14 +350,27 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
     String label,
     Object value,
     int index,
-    int count,
-  ) {
+    int count, {
+    bool showAllChildren = false,
+  }) {
     final color = Theme.of(context).colorScheme;
     final isObject = value is Map<String, dynamic>;
     final id = jsonEncode(path);
-    final expanded = !collapsed.contains(id);
+    final needle = JsonSearch.normalize(widget.searchQuery);
+    final expanded = needle.isNotEmpty || !collapsed.contains(id);
     final parent = path.sublist(0, path.length - 1);
-    final children = isObject ? value.entries.toList() : null;
+    final selfMatches =
+        needle.isNotEmpty && JsonSearch.keyMatches(label, needle);
+    final includeAll = showAllChildren || selfMatches;
+    final children = isObject
+        ? value.entries
+              .where(
+                (child) =>
+                    includeAll ||
+                    JsonSearch.matches(child.key, child.value, needle),
+              )
+              .toList()
+        : null;
     return Card(
       key: ValueKey('json-$id'),
       elevation: 0,
@@ -392,6 +439,7 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
                           children[i].value,
                           i,
                           children.length,
+                          showAllChildren: includeAll,
                         ),
                     if (children?.isEmpty ?? false)
                       const Padding(
@@ -410,53 +458,35 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
   @override
   Widget build(BuildContext context) {
     final all = widget.document.data.entries.toList();
-    final entries = all
-        .where(
-          (entry) =>
-              filter.isEmpty ||
-              entry.key.toLowerCase().contains(filter.toLowerCase()),
-        )
+    final needle = JsonSearch.normalize(widget.searchQuery);
+    final matches = all
+        .where((item) => JsonSearch.matches(item.key, item.value, needle))
         .toList();
     return Column(
       children: [
         if (busy) const LinearProgressIndicator(),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: search,
-                  decoration: const InputDecoration(
-                    hintText: 'Search keys',
-                    border: InputBorder.none,
-                    prefixIcon: Icon(Icons.search),
-                  ),
-                  onChanged: (text) => setState(() => filter = text),
-                ),
-              ),
-              action(Icons.add, 'Add entry', () => add([])),
-            ],
-          ),
-        ),
         Expanded(
-          child: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            children: [for (final entry in entries) entryWidget(entry, all)],
-          ),
+          child: matches.isEmpty && needle.isNotEmpty
+              ? const Center(child: Text('No matching entries'))
+              : ListView(
+                  key: ValueKey('json-results-$needle'),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  children: [
+                    for (final item in matches)
+                      entry(
+                        [item.key],
+                        item.key,
+                        item.value,
+                        all.indexWhere((e) => e.key == item.key),
+                        all.length,
+                      ),
+                  ],
+                ),
         ),
       ],
     );
   }
-
-  Widget entryWidget(
-    MapEntry<String, dynamic> item,
-    List<MapEntry<String, dynamic>> all,
-  ) => entry(
-    [item.key],
-    item.key,
-    item.value,
-    all.indexWhere((entry) => entry.key == item.key),
-    all.length,
-  );
 }

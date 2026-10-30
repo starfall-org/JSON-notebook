@@ -58,7 +58,9 @@ void main() {
     );
     await tester.tap(find.text('Explore demo'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('New JSON document'));
+    await tester.tap(find.byTooltip('Add'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('New JSON document'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField).last, 'notes');
     await tester.tap(find.text('Save'));
@@ -68,6 +70,49 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byTooltip('Add entry'), findsOneWidget);
   });
+
+  testWidgets(
+    'JSON search and Add are on AppBar, search is hidden by default',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(360, 740));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: VaultScreen(themeMode: ThemeMode.system, onTheme: (_) {}),
+        ),
+      );
+      await tester.tap(find.text('Explore demo'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Add'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('New JSON document'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField).last, 'demo');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('demo'));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Search JSON'), findsOneWidget);
+      expect(find.byTooltip('Add entry'), findsOneWidget);
+      expect(find.text('Search keys'), findsNothing);
+      expect(find.byType(TextField), findsNothing);
+      await tester.tap(find.byTooltip('Search JSON'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.byTooltip('Close search'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), 'missing');
+      await tester.pumpAndSettle();
+      expect(find.text('No matching entries'), findsOneWidget);
+      await tester.tap(find.byTooltip('Close search'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsNothing);
+      expect(find.byTooltip('Add entry'), findsOneWidget);
+      await tester.tap(find.byTooltip('Add entry'));
+      await tester.pumpAndSettle();
+      expect(find.text('Add entry'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('Markdown is not parsed or rendered at runtime', (tester) async {
     await tester.pumpWidget(

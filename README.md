@@ -9,6 +9,8 @@ Flutter vault for hierarchical **JSON** data stored in Google Drive. Android and
 - `.md`: displayed as **raw source only**; the app does not render it as Markdown or use a Markdown block parser in the editor. Tap the file's `⋮` menu (or long-press its row) and choose **Convert to JSON**.
 - Every file and folder has a three-dot menu with icon + text actions. Markdown files additionally have **Convert to JSON**.
 - JSON files are saved with **2-space indentation** and a final newline (`JsonEncoder.withIndent('  ')`). They are plain JSON, with no custom `format`, `version`, `blocks` or `sourceMarkdown` wrapper.
+- **Search and Add are in the AppBar.** Search is collapsed by default. In a JSON document, Search matches nested keys and all string values (including array elements), case-insensitively and after trimming whitespace. Matching branches expand automatically, unrelated branches are hidden, and clearing Search restores the prior expand/collapse state. The document's Add button opens the root entry editor.
+- In file lists, the AppBar Add menu offers a new folder, Markdown file or JSON document. The More menu contains folder navigation, recursive Markdown conversion, theme and sign-out (when signed in). The file-level three-dot context menus remain available.
 
 ## Markdown import rule
 
