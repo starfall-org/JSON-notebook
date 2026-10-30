@@ -279,13 +279,13 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
       key: ValueKey('json-${jsonEncode(path)}'),
       elevation: 0,
       color: color.surface,
-      margin: const EdgeInsets.symmetric(vertical: 4),
+      margin: const EdgeInsets.symmetric(vertical: 2),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(8),
         side: BorderSide(color: color.outlineVariant),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -372,44 +372,37 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
               SelectableText(jsonEncode(value)),
             if (nested && expanded)
               Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    border: Border(
-                      left: BorderSide(color: color.outlineVariant, width: 2),
-                    ),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (children != null)
-                          for (var i = 0; i < children.length; i++)
-                            entry(
-                              [...path, children[i].key],
-                              children[i].key,
-                              children[i].value,
-                              i,
-                              children.length,
-                            ),
-                        if (array != null)
-                          for (var i = 0; i < array.length; i++)
-                            entry(
-                              [...path, i],
-                              '[${i + 1}]',
-                              array[i],
-                              i,
-                              array.length,
-                            ),
-                        if ((children?.isEmpty ?? array?.isEmpty ?? false))
-                          const Padding(
-                            padding: EdgeInsets.all(12),
-                            child: Text('Empty'),
-                          ),
-                      ],
-                    ),
-                  ),
+                // Each level needs only a few pixels beyond the parent border.
+                // The child Card already draws its own outline; a second
+                // indented border wastes horizontal space on deep JSON trees.
+                padding: const EdgeInsets.only(left: 1),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (children != null)
+                      for (var i = 0; i < children.length; i++)
+                        entry(
+                          [...path, children[i].key],
+                          children[i].key,
+                          children[i].value,
+                          i,
+                          children.length,
+                        ),
+                    if (array != null)
+                      for (var i = 0; i < array.length; i++)
+                        entry(
+                          [...path, i],
+                          '[${i + 1}]',
+                          array[i],
+                          i,
+                          array.length,
+                        ),
+                    if ((children?.isEmpty ?? array?.isEmpty ?? false))
+                      const Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Text('Empty'),
+                      ),
+                  ],
                 ),
               ),
           ],

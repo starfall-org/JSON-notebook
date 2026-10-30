@@ -4,6 +4,53 @@ import 'package:secrets_keep/document_view.dart';
 import 'package:secrets_keep/json_document.dart';
 
 void main() {
+  testWidgets('Deep JSON card borders stay close together on a narrow screen', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final doc = JsonDocument.parse(
+      '{"A":{"B":{"C":{"D":{"E":{"F":{"G":"value"}}}}}}}',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: JsonDocumentView(document: doc, onSave: (_) async => true),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final paths = [
+      '["A"]',
+      '["A","B"]',
+      '["A","B","C"]',
+      '["A","B","C","D"]',
+      '["A","B","C","D","E"]',
+      '["A","B","C","D","E","F"]',
+      '["A","B","C","D","E","F","G"]',
+    ];
+    final rectangles = [
+      for (final path in paths)
+        tester.getRect(find.byKey(ValueKey('json-$path'))),
+    ];
+    for (var index = 1; index < rectangles.length; index++) {
+      expect(
+        rectangles[index].left - rectangles[index - 1].left,
+        lessThanOrEqualTo(9),
+        reason: 'Too much left indent at level $index',
+      );
+      expect(
+        rectangles[index - 1].right - rectangles[index].right,
+        lessThanOrEqualTo(9),
+        reason: 'Too much right indent at level $index',
+      );
+    }
+    expect(rectangles.last.width, greaterThan(240));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Native JSON tree encloses nested objects and array children', (
     tester,
   ) async {
