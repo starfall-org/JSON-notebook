@@ -95,9 +95,8 @@ void main() {
       }
       expect(rectangles.last.width, greaterThan(240));
       final key = tester.getRect(find.text('G'));
-      final add = tester.getRect(find.byTooltip('Add to G'));
+      expect(find.byTooltip('Add to G'), findsNothing);
       final edit = tester.getRect(find.byTooltip('Edit G'));
-      expect((key.center.dy - add.center.dy).abs(), lessThan(10));
       expect((key.center.dy - edit.center.dy).abs(), lessThan(10));
       expect(tester.takeException(), isNull);
     },
@@ -119,7 +118,8 @@ void main() {
     expect(find.ancestor(of: find.text('C'), matching: outer), findsOneWidget);
     expect(find.ancestor(of: find.text('D'), matching: outer), findsOneWidget);
     expect(find.ancestor(of: find.text('e'), matching: outer), findsOneWidget);
-    expect(find.byTooltip('Add to D'), findsOneWidget);
+    expect(find.byTooltip('Add to D'), findsNothing);
+    expect(find.byTooltip('Edit D'), findsOneWidget);
     expect(find.text('[1]'), findsNothing);
     expect(find.text('[2]'), findsNothing);
     expect(find.byTooltip('Copy value'), findsNothing);
@@ -214,6 +214,30 @@ void main() {
       expect(doc.at(['D']), 'e');
     },
   );
+
+  testWidgets('Add visibility depends on whether a key already has a value', (
+    tester,
+  ) async {
+    final doc = JsonDocument.parse(
+      '{"Empty":"","Filled":"secret","List":["x","y"],"Group":{"Child":"value"}}',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: JsonDocumentView(document: doc, onSave: (_) async => true),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Add to Empty'), findsOneWidget);
+    expect(find.byTooltip('Add to Group'), findsOneWidget);
+    expect(find.byTooltip('Add to Filled'), findsNothing);
+    expect(find.byTooltip('Add to List'), findsNothing);
+    expect(find.byTooltip('Add to Child'), findsNothing);
+    expect(find.byTooltip('Edit Filled'), findsOneWidget);
+    expect(find.byTooltip('Edit List'), findsOneWidget);
+    expect(find.byTooltip('Edit Child'), findsOneWidget);
+  });
 
   testWidgets('The single Add promotes empty string to nested key', (
     tester,
@@ -387,7 +411,7 @@ void main() {
   });
 
   testWidgets(
-    'Add on a populated key appends a value through the same editor',
+    'Populated key offers Edit only; value fields are changed in Edit',
     (tester) async {
       var doc = JsonDocument.parse('{"D":"e"}');
       await tester.pumpWidget(
@@ -405,7 +429,11 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.byTooltip('Add to D'));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Add to D'), findsNothing);
+      await tester.tap(find.byTooltip('Edit D'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add value'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const ValueKey('json-value-1')), 'f');
       await tester.tap(find.text('Save'));

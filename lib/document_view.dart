@@ -416,7 +416,8 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
                     'Move $label down',
                     () => reorder(parent, index, 1),
                   ),
-                action(Icons.add, 'Add to $label', () => add(path)),
+                if (isObject || (value is String && value.isEmpty))
+                  action(Icons.add, 'Add to $label', () => add(path)),
                 action(
                   Icons.edit_outlined,
                   'Edit $label',
