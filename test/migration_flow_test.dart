@@ -36,9 +36,7 @@ void main() {
       );
       await tester.tap(find.text('Explore demo'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Create'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('JSON document').last);
+      await tester.tap(find.byTooltip('New JSON document'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextFormField).last, 'notes');
       await tester.tap(find.text('Save').last);
@@ -48,9 +46,30 @@ void main() {
       await tester.tap(find.text('notes').first);
       await tester.pumpAndSettle();
       expect(find.text('0 blocks'), findsOneWidget);
-      expect(find.byTooltip('Add block'), findsOneWidget);
+      expect(find.byTooltip('New heading'), findsOneWidget);
     },
   );
+
+  testWidgets('File row shows inline actions without popup menus', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VaultScreen(themeMode: ThemeMode.system, onTheme: (_) {}),
+      ),
+    );
+    await tester.tap(find.text('Explore demo'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Convert github.md to JSON'), findsOneWidget);
+    expect(find.byTooltip('Rename github.md'), findsOneWidget);
+    expect(find.byTooltip('Delete github.md'), findsOneWidget);
+    expect(find.byType(PopupMenuButton), findsNothing);
+    await tester.tap(find.byTooltip('Rename github.md'));
+    await tester.pumpAndSettle();
+    expect(find.text('Rename'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+  });
 
   testWidgets('Lazy folder tree shows nested files', (tester) async {
     await tester.pumpWidget(

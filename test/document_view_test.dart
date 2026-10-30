@@ -31,17 +31,48 @@ void main() {
     expect(find.text('Title'), findsWidgets);
     expect(find.text('example'), findsWidgets);
     expect(find.byTooltip('Copy code'), findsOneWidget);
-    expect(find.byTooltip('Add block'), findsOneWidget);
+    expect(find.byTooltip('New heading'), findsOneWidget);
+    expect(find.byType(PopupMenuButton), findsNothing);
 
-    await tester.tap(find.byTooltip('Add block'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Heading').last);
+    await tester.tap(find.byTooltip('New heading'));
     await tester.pumpAndSettle();
     expect(find.text('Add heading'), findsOneWidget);
     await tester.enterText(find.byType(TextField).last, 'Added');
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     expect(current.markdown, contains('# Added'));
+  });
+
+  testWidgets('Borders enclose nested headings, items, and code blocks', (
+    tester,
+  ) async {
+    final document = VaultDocument(
+      '# Parent\n\n## Child\n\n- **Entry**\n\n  ```text\n  value\n  ```\n',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DocumentView(document: document, onSave: (_) async => true),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final outer = find.byKey(const ValueKey('block-heading-0'));
+    expect(outer, findsOneWidget);
+    expect(
+      find.ancestor(of: find.text('Child'), matching: outer),
+      findsOneWidget,
+    );
+    expect(
+      find.ancestor(of: find.text('Entry'), matching: outer),
+      findsOneWidget,
+    );
+    expect(
+      find.ancestor(of: find.text('value'), matching: outer),
+      findsOneWidget,
+    );
+    expect(find.byType(PopupMenuButton), findsNothing);
+    expect(find.byTooltip('Add subheading'), findsWidgets);
   });
 
   testWidgets('Document search navigates matching titles and their code', (
@@ -92,9 +123,7 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.byTooltip('Block actions').first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Edit').last);
+    await tester.tap(find.byTooltip('Edit block').first);
     await tester.pumpAndSettle();
     expect(find.text('Attached code blocks'), findsOneWidget);
     expect(find.byTooltip('Add attached code'), findsOneWidget);

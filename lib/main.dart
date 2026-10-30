@@ -224,6 +224,64 @@ class _VaultScreenState extends State<VaultScreen> {
       ? (store! as CachedVaultStore).refreshChildren(path.last.id)
       : store!.children(path.last.id);
 
+  Future<void> _deleteEntry(DriveEntry entry) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: Text('Delete ${entry.name}?'),
+        content: const Text('Move this item to Google Drive Trash?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialog, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialog, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _run(() async {
+      await store!.remove(entry.id);
+      final refreshed = await store!.children(path.last.id);
+      if (mounted) setState(() => entries = refreshed);
+    });
+  }
+
+  Widget _fileAction(IconData icon, String tooltip, VoidCallback callback) =>
+      IconButton(
+        tooltip: tooltip,
+        icon: Icon(icon, size: 20),
+        onPressed: callback,
+        visualDensity: VisualDensity.compact,
+        constraints: const BoxConstraints(minWidth: 38, minHeight: 38),
+        padding: const EdgeInsets.all(7),
+      );
+
+  void _cycleTheme() {
+    final next = switch (widget.themeMode) {
+      ThemeMode.system => ThemeMode.light,
+      ThemeMode.light => ThemeMode.dark,
+      ThemeMode.dark => ThemeMode.system,
+    };
+    widget.onTheme(next);
+  }
+
+  Future<void> _logout() async {
+    await google.signOut();
+    if (mounted) {
+      setState(() {
+        store = null;
+        path.clear();
+        entries = [];
+        openFile = null;
+        activeDocument = null;
+      });
+    }
+  }
+
   Future<void> _renameEntry(DriveEntry entry) async {
     final newName = await _prompt('Rename', initial: entry.name);
     if (newName == null || newName == entry.name) return;
@@ -583,45 +641,18 @@ class _VaultScreenState extends State<VaultScreen> {
                 onPressed: _edit,
                 icon: const Icon(Icons.edit_outlined),
               ),
-            PopupMenuButton<String>(
-              tooltip: 'Options',
-              onSelected: (choice) async {
-                if (choice == 'migrate-folder') {
-                  await _migrateFolder();
-                } else if (choice == 'logout') {
-                  await google.signOut();
-                  setState(() {
-                    store = null;
-                    path.clear();
-                    entries = [];
-                    openFile = null;
-                    activeDocument = null;
-                  });
-                } else if (choice == 'system') {
-                  widget.onTheme(ThemeMode.system);
-                } else if (choice == 'light') {
-                  widget.onTheme(ThemeMode.light);
-                } else if (choice == 'dark') {
-                  widget.onTheme(ThemeMode.dark);
-                }
+            _fileAction(
+              switch (widget.themeMode) {
+                ThemeMode.system => Icons.brightness_auto_outlined,
+                ThemeMode.light => Icons.light_mode_outlined,
+                ThemeMode.dark => Icons.dark_mode_outlined,
               },
-              itemBuilder: (_) => [
-                const PopupMenuItem(
-                  value: 'system',
-                  child: Text('System theme'),
-                ),
-                const PopupMenuItem(value: 'light', child: Text('Light theme')),
-                const PopupMenuItem(value: 'dark', child: Text('Dark theme')),
-                if (store != null && current == null)
-                  const PopupMenuItem(
-                    value: 'migrate-folder',
-                    child: Text('Migrate Markdown → JSON (recursive)'),
-                  ),
-                if (store is CachedVaultStore &&
-                    (store! as CachedVaultStore).source is GoogleDriveStore)
-                  const PopupMenuItem(value: 'logout', child: Text('Sign out')),
-              ],
+              'Theme: ${widget.themeMode.name} (tap to change)',
+              _cycleTheme,
             ),
+            if (store is CachedVaultStore &&
+                (store! as CachedVaultStore).source is GoogleDriveStore)
+              _fileAction(Icons.logout, 'Sign out', _logout),
           ],
         ),
         body: Column(
@@ -636,6 +667,43 @@ class _VaultScreenState extends State<VaultScreen> {
                     child: const Text('Dismiss'),
                   ),
                 ],
+              ),
+            if (store != null && current == null)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 2,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Files',
+                        style: Theme.of(context).textTheme.labelMedium,
+                      ),
+                    ),
+                    _fileAction(
+                      Icons.create_new_folder_outlined,
+                      'New folder',
+                      () => _create('folder'),
+                    ),
+                    _fileAction(
+                      Icons.note_add_outlined,
+                      'New Markdown file',
+                      () => _create('md'),
+                    ),
+                    _fileAction(
+                      Icons.data_object,
+                      'New JSON document',
+                      () => _create('json'),
+                    ),
+                    _fileAction(
+                      Icons.transform_outlined,
+                      'Migrate folder to JSON',
+                      _migrateFolder,
+                    ),
+                  ],
+                ),
               ),
             Expanded(
               child: store == null
@@ -741,73 +809,34 @@ class _VaultScreenState extends State<VaultScreen> {
                                             .labelSmall,
                                       ),
                                 onTap: () => _open(entry),
-                                trailing: PopupMenuButton<String>(
-                                  tooltip: 'File options',
-                                  onSelected: (value) async {
-                                    if (value == 'export') {
-                                      await _exportOne(entry);
-                                    }
-                                    if (value == 'migrate') {
-                                      await _migrateOne(entry);
-                                    }
-                                    if (value == 'rename') {
-                                      await _renameEntry(entry);
-                                    }
-                                    if (value == 'delete') {
-                                      if (!context.mounted) return;
-                                      final ok = await showDialog<bool>(
-                                        context: context,
-                                        builder: (context) => AlertDialog(
-                                          title: Text('Delete ${entry.name}?'),
-                                          actions: [
-                                            TextButton(
-                                              onPressed: () =>
-                                                  Navigator.pop(context, false),
-                                              child: const Text('Cancel'),
-                                            ),
-                                            FilledButton(
-                                              onPressed: () =>
-                                                  Navigator.pop(context, true),
-                                              child: const Text('Delete'),
-                                            ),
-                                          ],
-                                        ),
-                                      );
-                                      if (ok == true) {
-                                        await _run(() async {
-                                          await store!.remove(entry.id);
-                                          final items = await store!.children(
-                                            path.last.id,
-                                          );
-                                          if (mounted) {
-                                            setState(() => entries = items);
-                                          }
-                                        });
-                                      }
-                                    }
-                                  },
-                                  itemBuilder: (_) => [
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
                                     if (entry.name.toLowerCase().endsWith(
                                       '.md',
                                     ))
-                                      const PopupMenuItem(
-                                        value: 'migrate',
-                                        child: Text('Convert to JSON copy'),
+                                      _fileAction(
+                                        Icons.data_object,
+                                        'Convert ${entry.name} to JSON',
+                                        () => _migrateOne(entry),
                                       ),
                                     if (entry.name.toLowerCase().endsWith(
                                       '.json',
                                     ))
-                                      const PopupMenuItem(
-                                        value: 'export',
-                                        child: Text('Export Markdown copy'),
+                                      _fileAction(
+                                        Icons.file_download_outlined,
+                                        'Export ${entry.name} as Markdown',
+                                        () => _exportOne(entry),
                                       ),
-                                    const PopupMenuItem(
-                                      value: 'rename',
-                                      child: Text('Rename'),
+                                    _fileAction(
+                                      Icons.edit_outlined,
+                                      'Rename ${entry.name}',
+                                      () => _renameEntry(entry),
                                     ),
-                                    const PopupMenuItem(
-                                      value: 'delete',
-                                      child: Text('Delete'),
+                                    _fileAction(
+                                      Icons.delete_outline,
+                                      'Delete ${entry.name}',
+                                      () => _deleteEntry(entry),
                                     ),
                                   ],
                                 ),
@@ -820,26 +849,6 @@ class _VaultScreenState extends State<VaultScreen> {
             ),
           ],
         ),
-        floatingActionButton: store != null && current == null
-            ? PopupMenuButton<String>(
-                tooltip: 'Create',
-                onSelected: _create,
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'json', child: Text('JSON document')),
-                  PopupMenuItem(value: 'md', child: Text('Markdown file')),
-                  PopupMenuItem(value: 'folder', child: Text('Folder')),
-                ],
-                child: Material(
-                  elevation: 3,
-                  color: color.primaryContainer,
-                  shape: const CircleBorder(),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Icon(Icons.add, color: color.onPrimaryContainer),
-                  ),
-                ),
-              )
-            : null,
       ),
     );
   }

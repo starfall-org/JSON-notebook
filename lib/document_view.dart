@@ -366,29 +366,20 @@ class _DocumentViewState extends State<DocumentView> {
     if (targets.isEmpty) return;
     final selected = await showDialog<({VaultBlock target, DropMode mode})>(
       context: context,
-      builder: (context) => SimpleDialog(
+      builder: (context) => AlertDialog(
         title: const Text('Move block'),
-        children: [
-          for (final target in targets)
-            PopupMenuButton<DropMode>(
-              onSelected: (mode) =>
-                  Navigator.pop(context, (target: target, mode: mode)),
-              itemBuilder: (_) => [
-                const PopupMenuItem(
-                  value: DropMode.before,
-                  child: Text('Before'),
-                ),
-                if (target.isContainer)
-                  const PopupMenuItem(
-                    value: DropMode.inside,
-                    child: Text('Inside'),
-                  ),
-                const PopupMenuItem(
-                  value: DropMode.after,
-                  child: Text('After'),
-                ),
-              ],
-              child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        content: SizedBox(
+          width: 440,
+          height: 390,
+          child: ListView.builder(
+            itemCount: targets.length,
+            itemBuilder: (context, index) {
+              final target = targets[index];
+              void select(DropMode mode) =>
+                  Navigator.pop(context, (target: target, mode: mode));
+              return ListTile(
+                dense: true,
                 title: Text(
                   target.value.trim().isEmpty
                       ? target.kind.name
@@ -397,9 +388,36 @@ class _DocumentViewState extends State<DocumentView> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 subtitle: Text(target.kind.name),
-                trailing: const Icon(Icons.chevron_right),
-              ),
-            ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _action(
+                      Icons.arrow_upward,
+                      'Move before',
+                      () => select(DropMode.before),
+                    ),
+                    if (target.isContainer)
+                      _action(
+                        Icons.subdirectory_arrow_right,
+                        'Move inside',
+                        () => select(DropMode.inside),
+                      ),
+                    _action(
+                      Icons.arrow_downward,
+                      'Move after',
+                      () => select(DropMode.after),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
         ],
       ),
     );
@@ -407,6 +425,16 @@ class _DocumentViewState extends State<DocumentView> {
       await _commit(document.move(block, selected.target, selected.mode));
     }
   }
+
+  Widget _action(IconData icon, String tooltip, VoidCallback callback) =>
+      IconButton(
+        tooltip: tooltip,
+        onPressed: callback,
+        icon: Icon(icon, size: 19),
+        visualDensity: VisualDensity.compact,
+        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+        padding: const EdgeInsets.all(6),
+      );
 
   void _message(String message) {
     if (!mounted) return;
@@ -419,20 +447,14 @@ class _DocumentViewState extends State<DocumentView> {
     _message('Copied');
   }
 
-  Widget _block(VaultBlock block, int index) {
+  /// A block's card contains its full descendant subtree, rather than
+  /// painting sibling cards alongside it. Borders therefore enclose children.
+  Widget _block(VaultBlock block, int index, List<Widget> children) {
     final document = widget.document;
-    final parent = document.parentOf(block);
-    final depth = block.kind == BlockKind.heading
-        ? block.level - 1
-        : parent?.kind == BlockKind.heading
-        ? math.min(parent!.level, 5)
-        : parent?.kind == BlockKind.item
-        ? 1
-        : 0;
     final color = Theme.of(context).colorScheme;
     final isHeading = block.kind == BlockKind.heading;
+    final isItem = block.kind == BlockKind.item;
     final isCode = block.kind == BlockKind.code;
-    final label = block.kind.name;
     final show = switch (block.kind) {
       BlockKind.heading ||
       BlockKind.item => MarkdownBody(data: block.raw.trim(), selectable: true),
@@ -447,7 +469,6 @@ class _DocumentViewState extends State<DocumentView> {
       BlockKind.divider => const Divider(),
       BlockKind.other => MarkdownBody(data: block.value, selectable: true),
     };
-
     BuildContext? targetContext;
     return DragTarget<int>(
       onWillAcceptWithDetails: (detail) {
@@ -465,12 +486,9 @@ class _DocumentViewState extends State<DocumentView> {
         final relativeY = box is RenderBox && box.size.height > 0
             ? box.globalToLocal(detail.offset).dy / box.size.height
             : 0.5;
-        // Use the target block's own bounds, not the document viewport.
-        // Top/bottom quarters indicate before/after; middle indicates inside
-        // for a heading or item. A target can never receive its own subtree.
-        final mode = relativeY < 0.25
+        final mode = relativeY < 0.20
             ? DropMode.before
-            : relativeY > 0.75
+            : relativeY > 0.80
             ? DropMode.after
             : block.isContainer
             ? DropMode.inside
@@ -480,30 +498,38 @@ class _DocumentViewState extends State<DocumentView> {
       builder: (target, candidates, rejected) {
         targetContext = target;
         return Padding(
-          padding: EdgeInsets.only(
-            left: math.min(depth, 5) * 12.0,
-            top: 4,
-            bottom: 4,
-          ),
+          padding: const EdgeInsets.symmetric(vertical: 3),
           child: Card(
-            color: candidates.isEmpty ? null : color.primaryContainer,
+            key: ValueKey('block-${block.id}'),
             elevation: 0,
             clipBehavior: Clip.antiAlias,
+            color: candidates.isNotEmpty
+                ? color.primaryContainer
+                : color.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(
+                color: candidates.isNotEmpty
+                    ? color.primary
+                    : color.outlineVariant,
+                width: isHeading ? 1.4 : 1,
+              ),
+            ),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    children: [
-                      LongPressDraggable<int>(
+                  LayoutBuilder(
+                    builder: (context, limits) {
+                      final handle = LongPressDraggable<int>(
                         data: index,
                         feedback: Material(
                           elevation: 4,
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(9),
                           color: color.surfaceContainerHighest,
                           child: Padding(
-                            padding: const EdgeInsets.all(12),
+                            padding: const EdgeInsets.all(10),
                             child: Text(
                               block.value.split('\n').first,
                               style: TextStyle(color: color.onSurface),
@@ -511,123 +537,194 @@ class _DocumentViewState extends State<DocumentView> {
                           ),
                         ),
                         child: const Padding(
-                          padding: EdgeInsets.only(right: 12),
+                          padding: EdgeInsets.only(right: 5),
                           child: Icon(Icons.drag_indicator, size: 19),
                         ),
-                      ),
-                      Expanded(
-                        child: Text(
-                          label.toUpperCase(),
-                          style: Theme.of(context).textTheme.labelSmall
-                              ?.copyWith(color: color.onSurfaceVariant),
-                        ),
-                      ),
-                      if (isCode)
-                        IconButton(
-                          tooltip: 'Copy code',
-                          onPressed: () => _copy(block.value),
-                          icon: const Icon(Icons.copy, size: 19),
-                        ),
-                      PopupMenuButton<String>(
-                        tooltip: 'Block actions',
-                        onSelected: (action) {
-                          switch (action) {
-                            case 'edit':
-                              _edit(block);
-                            case 'delete':
-                              _delete(block);
-                            case 'move':
-                              _move(block);
-                            case 'heading':
-                              _add(BlockKind.heading, parent: block);
-                            case 'item':
-                              _add(BlockKind.item, parent: block);
-                            case 'code':
-                              _add(BlockKind.code, parent: block);
-                            case 'raw':
-                              _add(BlockKind.other, parent: block);
-                            case 'divider':
-                              _add(BlockKind.divider, parent: block);
-                          }
-                        },
-                        itemBuilder: (_) => [
-                          if (block.kind != BlockKind.divider)
-                            const PopupMenuItem(
-                              value: 'edit',
-                              child: Text('Edit'),
-                            ),
-                          if (isHeading)
-                            const PopupMenuItem(
-                              value: 'heading',
-                              child: Text('Add subheading'),
-                            ),
-                          if (isHeading)
-                            const PopupMenuItem(
-                              value: 'item',
-                              child: Text('Add item'),
-                            ),
-                          if (block.isContainer)
-                            const PopupMenuItem(
-                              value: 'code',
-                              child: Text('Add code'),
-                            ),
-                          if (isHeading)
-                            const PopupMenuItem(
-                              value: 'raw',
-                              child: Text('Add Markdown'),
-                            ),
-                          if (isHeading)
-                            const PopupMenuItem(
-                              value: 'divider',
-                              child: Text('Add divider'),
-                            ),
-                          const PopupMenuItem(
-                            value: 'move',
-                            child: Text('Move'),
+                      );
+                      final name = Text(
+                        isHeading
+                            ? 'H${block.level}'
+                            : block.kind.name.toUpperCase(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelSmall
+                            ?.copyWith(color: color.onSurfaceVariant),
+                      );
+                      final controls = <Widget>[
+                        if (isCode)
+                          _action(
+                            Icons.copy_outlined,
+                            'Copy code',
+                            () => _copy(block.value),
                           ),
-                          const PopupMenuItem(
-                            value: 'delete',
-                            child: Text('Delete'),
+                        if (block.kind != BlockKind.divider)
+                          _action(
+                            Icons.edit_outlined,
+                            'Edit block',
+                            () => _edit(block),
+                          ),
+                        _action(
+                          Icons.open_with,
+                          'Move block',
+                          () => _move(block),
+                        ),
+                        _action(
+                          Icons.delete_outline,
+                          'Delete block',
+                          () => _delete(block),
+                        ),
+                      ];
+                      if (limits.maxWidth >= 245) {
+                        return Row(
+                          children: [
+                            handle,
+                            Expanded(child: name),
+                            ...controls,
+                          ],
+                        );
+                      }
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            children: [
+                              handle,
+                              Expanded(child: name),
+                            ],
+                          ),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: controls,
+                              ),
+                            ),
                           ),
                         ],
-                      ),
-                    ],
+                      );
+                    },
                   ),
                   if (block.kind != BlockKind.divider)
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(6, 2, 4, 6),
-                      child: isHeading || block.kind == BlockKind.item
-                          ? DefaultTextStyle.merge(
-                              style: TextStyle(
-                                fontWeight: isHeading
-                                    ? FontWeight.w600
-                                    : FontWeight.normal,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 6,
+                      ),
+                      child: isCode
+                          ? Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: color.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(8),
                               ),
                               child: show,
                             )
-                          : (isCode
-                                ? Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: color.surfaceContainerHighest,
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: show,
-                                  )
-                                : show),
+                          : show,
                     ),
                   if (isCode && block.language.isNotEmpty)
                     Text(
                       block.language,
                       style: Theme.of(context).textTheme.labelSmall,
                     ),
+                  if (isHeading || isItem)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Wrap(
+                        spacing: 1,
+                        runSpacing: 0,
+                        children: [
+                          if (isHeading) ...[
+                            _action(
+                              Icons.account_tree_outlined,
+                              'Add subheading',
+                              () => _add(BlockKind.heading, parent: block),
+                            ),
+                            _action(
+                              Icons.playlist_add,
+                              'Add item',
+                              () => _add(BlockKind.item, parent: block),
+                            ),
+                          ],
+                          _action(
+                            Icons.code,
+                            'Add code',
+                            () => _add(BlockKind.code, parent: block),
+                          ),
+                          if (isHeading) ...[
+                            _action(
+                              Icons.notes,
+                              'Add Markdown',
+                              () => _add(BlockKind.other, parent: block),
+                            ),
+                            _action(
+                              Icons.horizontal_rule,
+                              'Add divider',
+                              () => _add(BlockKind.divider, parent: block),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  if (children.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 9),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: Border(
+                            left: BorderSide(
+                              color: color.outlineVariant,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: children,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
           ),
         );
       },
+    );
+  }
+
+  /// Construct a forest from the source's containment ranges. Each child is
+  /// rendered once *inside* its parent, including in filtered search results.
+  Widget _blockTree(List<int> visibleIndices) {
+    final blocks = widget.document.blocks;
+    final children = <int?, List<int>>{null: []};
+    final stack = <int>[];
+    for (final index in visibleIndices) {
+      final block = blocks[index];
+      if (block.kind == BlockKind.other && block.raw.trim().isEmpty) continue;
+      while (stack.isNotEmpty &&
+          widget.document.rangeOf(blocks[stack.last]).end <= block.start) {
+        stack.removeLast();
+      }
+      final parent = stack.isEmpty ? null : stack.last;
+      children.putIfAbsent(parent, () => []).add(index);
+      if (block.isContainer) {
+        stack.add(index);
+      }
+    }
+    Widget branch(int index) => _block(blocks[index], index, [
+      for (final child in children[index] ?? const <int>[]) branch(child),
+    ]);
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      children: [for (final index in children[null]!) branch(index)],
     );
   }
 
@@ -714,36 +811,29 @@ class _DocumentViewState extends State<DocumentView> {
                       : () => _showMatch((active + 1) % matched.length),
                 ),
               ],
-              PopupMenuButton<BlockKind>(
-                tooltip: 'Add block',
-                icon: const Icon(Icons.add),
-                onSelected: (kind) => _add(kind),
-                itemBuilder: (_) => const [
-                  PopupMenuItem(
-                    value: BlockKind.heading,
-                    child: Text('Heading'),
-                  ),
-                  PopupMenuItem(value: BlockKind.item, child: Text('Item')),
-                  PopupMenuItem(value: BlockKind.code, child: Text('Code')),
-                  PopupMenuItem(
-                    value: BlockKind.other,
-                    child: Text('Markdown'),
-                  ),
-                  PopupMenuItem(
-                    value: BlockKind.divider,
-                    child: Text('Divider'),
-                  ),
-                ],
+              _action(
+                Icons.account_tree_outlined,
+                'New heading',
+                () => _add(BlockKind.heading),
+              ),
+              _action(
+                Icons.playlist_add,
+                'New item',
+                () => _add(BlockKind.item),
+              ),
+              _action(Icons.code, 'New code', () => _add(BlockKind.code)),
+              _action(Icons.notes, 'New Markdown', () => _add(BlockKind.other)),
+              _action(
+                Icons.horizontal_rule,
+                'New divider',
+                () => _add(BlockKind.divider),
               ),
             ],
           ),
         ),
         Expanded(
           child: needle.isEmpty
-              ? ListView.builder(
-                  itemCount: blocks.length,
-                  itemBuilder: (context, index) => _block(blocks[index], index),
-                )
+              ? _blockTree(List<int>.generate(blocks.length, (index) => index))
               : matched.isEmpty
               ? const Center(child: Text('No matching sections or items'))
               : PageView.builder(
@@ -753,18 +843,16 @@ class _DocumentViewState extends State<DocumentView> {
                   itemBuilder: (context, page) {
                     final match = blocks[matched[page]];
                     final range = widget.document.rangeOf(match);
-                    final section = [
-                      for (var i = matched[page]; i < blocks.length; i++)
-                        if (blocks[i].start >= range.start &&
-                            blocks[i].start < range.end)
-                          i,
-                    ];
-                    return ListView.builder(
-                      key: ValueKey('match-${match.id}'),
-                      itemCount: section.length,
-                      itemBuilder: (context, i) =>
-                          _block(blocks[section[i]], section[i]),
-                    );
+                    return _blockTree([
+                      for (
+                        var index = matched[page];
+                        index < blocks.length;
+                        index++
+                      )
+                        if (blocks[index].start >= range.start &&
+                            blocks[index].start < range.end)
+                          index,
+                    ]);
                   },
                 ),
         ),
