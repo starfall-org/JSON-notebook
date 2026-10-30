@@ -4,7 +4,8 @@ Flutter vault for hierarchical **JSON** data stored in Google Drive. Android and
 
 ## File behavior
 
-- `.json`: parsed as a native JSON object, with expandable nested objects and arrays. Edit/add/delete keys or values, reorder entries, copy text, and save the resulting document to Drive.
+- `.json`: parsed as a native JSON object, with expandable nested sections and lists. Edit/add/delete keys or values, reorder entries, copy text, and save the resulting document to Drive. **Every leaf value is a string**; numbers, booleans and null are rejected rather than silently converted.
+- The editor shows neither value-type labels nor array indices. There is no type picker. Add value always creates a string; separate section/list actions create structural containers.
 - `.md`: displayed as **raw source only**; the app does not render it as Markdown or use a Markdown block parser in the editor. Tap the file's `⋮` menu (or long-press its row) and choose **Convert to JSON**.
 - Every file and folder has a three-dot menu with icon + text actions. Markdown files additionally have **Convert to JSON**.
 - JSON files are saved with **2-space indentation** and a final newline (`JsonEncoder.withIndent('  ')`). They are plain JSON, with no custom `format`, `version`, `blocks` or `sourceMarkdown` wrapper.

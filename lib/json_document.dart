@@ -12,7 +12,29 @@ class JsonDocument {
     if (parsed is! Map<String, dynamic>) {
       throw const FormatException('The root of a vault must be a JSON object');
     }
+    _validateLeaves(parsed);
     return JsonDocument._(parsed);
+  }
+
+  /// All primitive values are strings; objects and arrays are only structural
+  /// containers. Reject unsupported values instead of modifying existing data.
+  static void _validateLeaves(Object? value) {
+    if (value is String) return;
+    if (value is Map<String, dynamic>) {
+      for (final child in value.values) {
+        _validateLeaves(child);
+      }
+      return;
+    }
+    if (value is List) {
+      for (final child in value) {
+        _validateLeaves(child);
+      }
+      return;
+    }
+    throw const FormatException(
+      'Only string values are supported in this vault',
+    );
   }
 
   /// Canonical, readable, consistently indented (2 spaces), with final newline.
@@ -42,6 +64,7 @@ class JsonDocument {
   JsonDocument _change(void Function(Map<String, dynamic>) operation) {
     final copy = jsonDecode(jsonEncode(data)) as Map<String, dynamic>;
     operation(copy);
+    _validateLeaves(copy);
     return JsonDocument._(copy);
   }
 

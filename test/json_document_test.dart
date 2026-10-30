@@ -69,15 +69,15 @@ void main() {
     expect(jsonDecode(doc.toJson()), doc.data);
   });
 
-  test('Add/edit/delete/reorder preserve native object and array types', () {
+  test('Add/edit/delete/reorder preserve structures with string values', () {
     var doc = JsonDocument.parse('{"B":{"C":{"D":["e","f"]}},"A":"value"}');
-    doc = doc.add(['B', 'C'], 'E', true);
+    doc = doc.add(['B', 'C'], 'E', 'enabled');
     doc = doc.update(['B', 'C', 'D', 1], 'g');
     doc = doc.reorder(['B', 'C', 'D'], 0, 1);
-    doc = doc.update(['B', 'C', 'E'], 42, newKey: 'Count');
+    doc = doc.update(['B', 'C', 'E'], '42', newKey: 'Count');
     expect(doc.at(['B', 'C']), {
       'D': ['g', 'e'],
-      'Count': 42,
+      'Count': '42',
     });
     doc = doc.delete(['B', 'C', 'Count']);
     expect(doc.at(['B', 'C']), {
@@ -86,6 +86,27 @@ void main() {
     expect(() => doc.add(['B'], 'C', {}), throwsFormatException);
     expect(JsonDocument.parse(doc.toJson()).data, doc.data);
   });
+
+  test(
+    'Reject non-string primitive values instead of silently altering data',
+    () {
+      for (final raw in [
+        '{"x": 42}',
+        '{"x": true}',
+        '{"x": false}',
+        '{"x": null}',
+        '{"x": ["a", 1]}',
+        '{"x": {"nested": 2.5}}',
+      ]) {
+        expect(() => JsonDocument.parse(raw), throwsFormatException);
+      }
+      final doc = JsonDocument.parse('{"a": "1", "b": ["2"]}');
+      expect(() => doc.add([], 'number', 42), throwsFormatException);
+      expect(() => doc.update(['a'], false), throwsFormatException);
+      expect(() => doc.update(['b', 0], null), throwsFormatException);
+      expect(doc.toJson(), contains('"a": "1"'));
+    },
+  );
 
   test(
     'Migration creates a formatted JSON copy while leaving Markdown unmodified',
@@ -104,7 +125,7 @@ void main() {
       expect(await store.read(file.id), original);
       final again = await migration.migrate(file);
       expect(again.state, MigrationState.skipped);
-      await store.write(result.destination.id, '{"Different": true}\n');
+      await store.write(result.destination.id, '{"Different": "value"}\n');
       expect(() async => migration.migrate(file), throwsStateError);
       expect(await store.read(file.id), original);
     },

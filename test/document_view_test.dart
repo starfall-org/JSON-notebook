@@ -70,7 +70,12 @@ void main() {
     expect(find.ancestor(of: find.text('C'), matching: outer), findsOneWidget);
     expect(find.ancestor(of: find.text('D'), matching: outer), findsOneWidget);
     expect(find.ancestor(of: find.text('e'), matching: outer), findsOneWidget);
-    expect(find.byTooltip('Add child to D'), findsOneWidget);
+    expect(find.byTooltip('Add value to D'), findsOneWidget);
+    expect(find.text('Object'), findsNothing);
+    expect(find.text('Array'), findsNothing);
+    expect(find.text('String'), findsNothing);
+    expect(find.text('[1]'), findsNothing);
+    expect(find.text('[2]'), findsNothing);
     expect(find.byType(PopupMenuButton), findsNothing);
   });
 
@@ -97,7 +102,7 @@ void main() {
       await tester.tap(find.byTooltip('Edit A'));
       await tester.pumpAndSettle();
       await tester.enterText(
-        find.byKey(const ValueKey('value-String')),
+        find.byKey(const ValueKey('string-value-input')),
         'new value',
       );
       await tester.tap(find.text('Save'));
@@ -112,6 +117,78 @@ void main() {
       expect(doc.toJson(), endsWith('\n'));
     },
   );
+
+  testWidgets(
+    'Value editor has no type selector and always produces a string',
+    (tester) async {
+      var doc = JsonDocument.parse('{"A": "initial"}');
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, update) => JsonDocumentView(
+                document: doc,
+                onSave: (next) async {
+                  update(() => doc = next);
+                  return true;
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byTooltip('Edit A'));
+      await tester.pumpAndSettle();
+      expect(find.byType(DropdownButtonFormField), findsNothing);
+      expect(find.text('Value type'), findsNothing);
+      await tester.enterText(
+        find.byKey(const ValueKey('string-value-input')),
+        '123',
+      );
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      expect(doc.at(['A']), '123');
+      expect(doc.toJson(), contains('"A": "123"'));
+    },
+  );
+
+  testWidgets('Sections and lists remain available as structural containers', (
+    tester,
+  ) async {
+    var doc = JsonDocument.empty();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, update) => JsonDocumentView(
+              document: doc,
+              onSave: (next) async {
+                update(() => doc = next);
+                return true;
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byTooltip('Add section'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).first, 'Group');
+    expect(find.byType(DropdownButtonFormField), findsNothing);
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(doc.data['Group'], <String, dynamic>{});
+    await tester.tap(find.byTooltip('Add list to Group'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).first, 'Items');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(doc.data, {
+      'Group': {'Items': <String>[]},
+    });
+    expect(find.text('Object'), findsNothing);
+    expect(find.text('Array'), findsNothing);
+  });
 
   testWidgets('Array element can be added using inline action', (tester) async {
     var doc = JsonDocument.parse('{"D":["e"]}');
@@ -130,9 +207,12 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.byTooltip('Add child to D'));
+    await tester.tap(find.byTooltip('Add value to D'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const ValueKey('value-String')), 'f');
+    await tester.enterText(
+      find.byKey(const ValueKey('string-value-input')),
+      'f',
+    );
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     expect(doc.data, {

@@ -35,16 +35,6 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
     super.dispose();
   }
 
-  static String kind(Object? value) => switch (value) {
-    Map() => 'Object',
-    List() => 'Array',
-    String() => 'String',
-    bool() => 'Boolean',
-    num() => 'Number',
-    null => 'Null',
-    _ => 'Unknown',
-  };
-
   Future<bool> save(JsonDocument next) async {
     if (busy || next.toJson() == widget.document.toJson()) return false;
     setState(() => busy = true);
@@ -63,21 +53,18 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
 
   Future<_Draft?> editDialog({
     String name = '',
-    Object? current,
+    Object? current = '',
     bool isNew = false,
     bool requireKey = false,
   }) async {
     var draftName = name;
-    var type = isNew ? 'String' : kind(current);
-    var raw = !isNew && current is! Map && current is! List
-        ? (current is String ? current : jsonEncode(current))
-        : '';
+    var draftValue = current is String ? current : '';
     String? validation;
     return showDialog<_Draft>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, update) => AlertDialog(
-          title: Text(isNew ? 'Add JSON entry' : 'Edit JSON entry'),
+          title: Text(isNew ? 'Add entry' : 'Edit entry'),
           scrollable: true,
           content: SizedBox(
             width: 420,
@@ -88,47 +75,17 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
                 if (requireKey)
                   TextFormField(
                     initialValue: draftName,
-                    onChanged: (s) => draftName = s,
+                    onChanged: (text) => draftName = text,
                     decoration: const InputDecoration(labelText: 'Key'),
                   ),
-                DropdownButtonFormField<String>(
-                  initialValue: type,
-                  decoration: const InputDecoration(labelText: 'Value type'),
-                  items:
-                      const [
-                            'String',
-                            'Object',
-                            'Array',
-                            'Number',
-                            'Boolean',
-                            'Null',
-                          ]
-                          .map(
-                            (type) => DropdownMenuItem(
-                              value: type,
-                              child: Text(type),
-                            ),
-                          )
-                          .toList(),
-                  onChanged: (v) {
-                    if (v != null) {
-                      update(() {
-                        type = v;
-                        validation = null;
-                      });
-                    }
-                  },
-                ),
-                if (type == 'String' || type == 'Number' || type == 'Boolean')
+                if (current is String)
                   TextFormField(
-                    key: ValueKey('value-$type'),
-                    initialValue: raw,
-                    minLines: type == 'String' ? 2 : 1,
-                    maxLines: type == 'String' ? 8 : 1,
-                    onChanged: (s) => raw = s,
-                    decoration: InputDecoration(
-                      labelText: type == 'String' ? 'Text' : 'Value',
-                    ),
+                    key: const ValueKey('string-value-input'),
+                    initialValue: draftValue,
+                    minLines: 2,
+                    maxLines: 8,
+                    onChanged: (text) => draftValue = text,
+                    decoration: const InputDecoration(labelText: 'Value'),
                   ),
                 if (validation != null)
                   Padding(
@@ -150,31 +107,17 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
             ),
             FilledButton(
               onPressed: () {
-                try {
-                  if (requireKey && draftName.trim().isEmpty) {
-                    throw const FormatException('Key cannot be empty');
-                  }
-                  final Object? value = switch (type) {
-                    'String' => raw,
-                    'Object' =>
-                      current is Map<String, dynamic> && !isNew
-                          ? current
-                          : <String, dynamic>{},
-                    'Array' =>
-                      current is List && !isNew ? current : <dynamic>[],
-                    'Number' => num.parse(raw.trim()),
-                    'Boolean' => switch (raw.trim().toLowerCase()) {
-                      'true' => true,
-                      'false' => false,
-                      _ => throw const FormatException('Enter true or false'),
-                    },
-                    'Null' => null,
-                    _ => throw const FormatException('Invalid JSON type'),
-                  };
-                  Navigator.pop(context, _Draft(draftName.trim(), value));
-                } catch (e) {
-                  update(() => validation = '$e');
+                if (requireKey && draftName.trim().isEmpty) {
+                  update(() => validation = 'Key cannot be empty');
+                  return;
                 }
+                Navigator.pop(
+                  context,
+                  _Draft(
+                    draftName.trim(),
+                    current is String ? draftValue : current,
+                  ),
+                );
               },
               child: const Text('Save'),
             ),
@@ -184,9 +127,13 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
     );
   }
 
-  Future<void> add(List<Object> parentPath) async {
+  Future<void> add(List<Object> parentPath, {Object initial = ''}) async {
     final parent = widget.document.at(parentPath);
-    final draft = await editDialog(isNew: true, requireKey: parent is Map);
+    final draft = await editDialog(
+      isNew: true,
+      current: initial,
+      requireKey: parent is Map,
+    );
     if (draft == null) return;
     try {
       await save(widget.document.add(parentPath, draft.name, draft.value));
@@ -289,58 +236,77 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                if (nested)
+            if (nested || label.isNotEmpty)
+              Row(
+                children: [
+                  if (nested)
+                    action(
+                      expanded ? Icons.expand_more : Icons.chevron_right,
+                      label.isEmpty ? 'Toggle entry' : 'Toggle $label',
+                      () => setState(() {
+                        if (!collapsed.remove(id)) collapsed.add(id);
+                      }),
+                    ),
+                  if (label.isNotEmpty)
+                    Expanded(
+                      child: Text(
+                        label,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                    ),
+                ],
+              ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 0,
+                runSpacing: 0,
+                children: [
+                  if (index > 0)
+                    action(
+                      Icons.arrow_upward,
+                      'Move value up',
+                      () => reorder(parent, index, -1),
+                    ),
+                  if (index + 1 < count)
+                    action(
+                      Icons.arrow_downward,
+                      'Move value down',
+                      () => reorder(parent, index, 1),
+                    ),
+                  if (nested)
+                    action(
+                      Icons.add,
+                      'Add value${label.isEmpty ? '' : ' to $label'}',
+                      () => add(path),
+                    ),
+                  if (value is Map<String, dynamic>) ...[
+                    action(
+                      Icons.account_tree_outlined,
+                      'Add section to $label',
+                      () => add(path, initial: <String, dynamic>{}),
+                    ),
+                    action(
+                      Icons.format_list_bulleted,
+                      'Add list to $label',
+                      () => add(path, initial: <String>[]),
+                    ),
+                  ],
                   action(
-                    expanded ? Icons.expand_more : Icons.chevron_right,
-                    'Toggle $label',
-                    () => setState(() {
-                      if (!collapsed.remove(id)) collapsed.add(id);
-                    }),
+                    Icons.edit_outlined,
+                    label.isEmpty ? 'Edit value' : 'Edit $label',
+                    () => edit(path, label, value),
                   ),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                ),
-              ],
-            ),
-            Row(
-              children: [
-                Text(
-                  kind(value),
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-                const Spacer(),
-                if (index > 0)
                   action(
-                    Icons.arrow_upward,
-                    'Move $label up',
-                    () => reorder(parent, index, -1),
+                    Icons.delete_outline,
+                    label.isEmpty ? 'Delete value' : 'Delete $label',
+                    () => delete(path, label.isEmpty ? 'value' : label),
                   ),
-                if (index + 1 < count)
-                  action(
-                    Icons.arrow_downward,
-                    'Move $label down',
-                    () => reorder(parent, index, 1),
-                  ),
-                if (nested)
-                  action(Icons.add, 'Add child to $label', () => add(path)),
-                action(
-                  Icons.edit_outlined,
-                  'Edit $label',
-                  () => edit(path, label, value),
-                ),
-                action(
-                  Icons.delete_outline,
-                  'Delete $label',
-                  () => delete(path, label),
-                ),
-              ],
+                ],
+              ),
             ),
             if (value is String)
               Container(
@@ -362,14 +328,16 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
                         ),
                       ),
                     ),
-                    action(Icons.copy_outlined, 'Copy $label', () {
-                      Clipboard.setData(ClipboardData(text: value));
-                    }),
+                    action(
+                      Icons.copy_outlined,
+                      label.isEmpty ? 'Copy value' : 'Copy $label',
+                      () {
+                        Clipboard.setData(ClipboardData(text: value));
+                      },
+                    ),
                   ],
                 ),
               ),
-            if (value != null && value is! String && !nested)
-              SelectableText(jsonEncode(value)),
             if (nested && expanded)
               Padding(
                 // Each level needs only a few pixels beyond the parent border.
@@ -390,13 +358,7 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
                         ),
                     if (array != null)
                       for (var i = 0; i < array.length; i++)
-                        entry(
-                          [...path, i],
-                          '[${i + 1}]',
-                          array[i],
-                          i,
-                          array.length,
-                        ),
+                        entry([...path, i], '', array[i], i, array.length),
                     if ((children?.isEmpty ?? array?.isEmpty ?? false))
                       const Padding(
                         padding: EdgeInsets.all(8),
@@ -439,7 +401,17 @@ class _JsonDocumentViewState extends State<JsonDocumentView> {
                   onChanged: (s) => setState(() => filter = s),
                 ),
               ),
-              action(Icons.add, 'Add JSON key', () => add([])),
+              action(Icons.add, 'Add value', () => add([])),
+              action(
+                Icons.account_tree_outlined,
+                'Add section',
+                () => add([], initial: <String, dynamic>{}),
+              ),
+              action(
+                Icons.format_list_bulleted,
+                'Add list',
+                () => add([], initial: <String>[]),
+              ),
             ],
           ),
         ),
