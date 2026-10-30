@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'document_view.dart';
 import 'folder_drawer.dart';
-import 'vault_document.dart';
+import 'json_document.dart';
 import 'vault_migration.dart';
 import 'vault_naming.dart';
 import 'vault_store.dart';
@@ -85,7 +85,7 @@ class _VaultScreenState extends State<VaultScreen> {
   List<DriveEntry> entries = [];
   DriveEntry? openFile;
   String content = '';
-  VaultDocument? activeDocument;
+  JsonDocument? activeDocument;
   bool busy = false, search = false;
   String query = '', error = '';
   final TextEditingController searchController = TextEditingController();
@@ -162,8 +162,8 @@ class _VaultScreenState extends State<VaultScreen> {
           openFile = entry;
           content = text;
           activeDocument = entry.name.toLowerCase().endsWith('.json')
-              ? VaultDocument.fromJson(text)
-              : VaultDocument(text);
+              ? JsonDocument.parse(text)
+              : null;
         });
       }
     }
@@ -246,7 +246,16 @@ class _VaultScreenState extends State<VaultScreen> {
     await _run(() async {
       await store!.remove(entry.id);
       final refreshed = await store!.children(path.last.id);
-      if (mounted) setState(() => entries = refreshed);
+      if (mounted) {
+        setState(() {
+          entries = refreshed;
+          if (openFile?.id == entry.id) {
+            openFile = null;
+            activeDocument = null;
+            content = '';
+          }
+        });
+      }
     });
   }
 
@@ -299,7 +308,14 @@ class _VaultScreenState extends State<VaultScreen> {
       );
       await store!.rename(entry.id, validated);
       final refreshed = await store!.children(path.last.id);
-      if (mounted) setState(() => entries = refreshed);
+      if (mounted) {
+        setState(() {
+          entries = refreshed;
+          if (openFile?.id == entry.id) {
+            openFile = refreshed.firstWhere((item) => item.id == entry.id);
+          }
+        });
+      }
     });
   }
 
@@ -327,7 +343,7 @@ class _VaultScreenState extends State<VaultScreen> {
       final created = await store!.create(path.last.id, name, folder: folder);
       if (json) {
         try {
-          await store!.write(created.id, VaultDocument('').toJson());
+          await store!.write(created.id, JsonDocument.empty().toJson());
         } catch (_) {
           try {
             await store!.remove(created.id);
@@ -342,7 +358,7 @@ class _VaultScreenState extends State<VaultScreen> {
     });
   }
 
-  Future<bool> _saveDocument(VaultDocument document) async {
+  Future<bool> _saveDocument(JsonDocument document) async {
     final file = openFile;
     if (file == null || busy) return false;
     setState(() {
@@ -350,9 +366,7 @@ class _VaultScreenState extends State<VaultScreen> {
       error = '';
     });
     try {
-      final encoded = file.name.toLowerCase().endsWith('.json')
-          ? document.toJson()
-          : document.markdown;
+      final encoded = document.toJson();
       await store!.write(file.id, encoded);
       if (mounted && openFile?.id == file.id) {
         setState(() {
@@ -375,8 +389,8 @@ class _VaultScreenState extends State<VaultScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Convert Markdown to JSON?'),
         content: Text(
-          'Create a JSON copy of ${source.name} with editable blocks. '
-          'The original Markdown file stays unchanged. Nothing is overwritten.',
+          'Create a formatted JSON copy of ${source.name}. '
+          'The Markdown original is preserved; unsupported syntax is reported rather than discarded.',
         ),
         actions: [
           TextButton(
@@ -409,45 +423,6 @@ class _VaultScreenState extends State<VaultScreen> {
     });
   }
 
-  Future<void> _exportOne(DriveEntry source) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Export JSON to Markdown?'),
-        content: const Text(
-          'This creates a separate Markdown file in the same Drive folder. Existing files are never overwritten.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Export'),
-          ),
-        ],
-      ),
-    );
-    if (confirm != true) return;
-    await _run(() async {
-      final result = await VaultMigration(store!).exportMarkdown(source);
-      final children = await store!.children(path.last.id);
-      if (mounted) {
-        setState(() => entries = children);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              result.state == MigrationState.created
-                  ? 'Markdown copy created'
-                  : 'Matching Markdown already exists',
-            ),
-          ),
-        );
-      }
-    });
-  }
-
   Future<void> _browseFromDrawer(
     List<DriveEntry> folderPath, [
     DriveEntry? file,
@@ -459,8 +434,8 @@ class _VaultScreenState extends State<VaultScreen> {
       final parsed = raw == null
           ? null
           : file!.name.toLowerCase().endsWith('.json')
-          ? VaultDocument.fromJson(raw)
-          : VaultDocument(raw);
+          ? JsonDocument.parse(raw)
+          : null;
       if (mounted) {
         setState(() {
           path
@@ -537,20 +512,51 @@ class _VaultScreenState extends State<VaultScreen> {
     }
   }
 
-  Future<void> _edit() async {
-    final entry = openFile;
-    if (entry == null) return;
-    final result = await Navigator.push<String>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => MarkdownEditor(
-          name: entry.name,
-          initial: activeDocument?.markdown ?? '',
-        ),
-      ),
+  List<PopupMenuEntry<String>> _fileMenuItems(DriveEntry entry) => [
+    if (entry.name.toLowerCase().endsWith('.md'))
+      _menuOption('convert', Icons.data_object, 'Convert to JSON'),
+    _menuOption('rename', Icons.edit_outlined, 'Rename'),
+    _menuOption('delete', Icons.delete_outline, 'Delete'),
+  ];
+
+  Future<void> _showFileContextMenu(
+    DriveEntry entry,
+    LongPressStartDetails details,
+  ) async {
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final at = overlay.globalToLocal(details.globalPosition);
+    final position = RelativeRect.fromRect(
+      Rect.fromLTWH(at.dx, at.dy, 1, 1),
+      Offset.zero & overlay.size,
     );
-    if (result == null) return;
-    await _saveDocument(VaultDocument(result));
+    final action = await showMenu<String>(
+      context: context,
+      position: position,
+      items: _fileMenuItems(entry),
+    );
+    if (action != null) await _fileOption(action, entry);
+  }
+
+  PopupMenuEntry<String> _menuOption(
+    String action,
+    IconData icon,
+    String title,
+  ) => PopupMenuItem<String>(
+    value: action,
+    child: Row(
+      children: [Icon(icon, size: 20), const SizedBox(width: 12), Text(title)],
+    ),
+  );
+
+  Future<void> _fileOption(String action, DriveEntry entry) async {
+    switch (action) {
+      case 'convert':
+        await _migrateOne(entry);
+      case 'rename':
+        await _renameEntry(entry);
+      case 'delete':
+        await _deleteEntry(entry);
+    }
   }
 
   @override
@@ -623,23 +629,11 @@ class _VaultScreenState extends State<VaultScreen> {
                   searchController.clear();
                 }),
               ),
-            if (current != null && current.name.toLowerCase().endsWith('.md'))
-              IconButton(
-                tooltip: 'Convert to JSON',
-                onPressed: () => _migrateOne(current),
-                icon: const Icon(Icons.data_object),
-              ),
-            if (current != null && current.name.toLowerCase().endsWith('.json'))
-              IconButton(
-                tooltip: 'Export as Markdown',
-                onPressed: () => _exportOne(current),
-                icon: const Icon(Icons.file_download_outlined),
-              ),
             if (current != null)
-              IconButton(
-                tooltip: 'Edit',
-                onPressed: _edit,
-                icon: const Icon(Icons.edit_outlined),
+              PopupMenuButton<String>(
+                tooltip: 'File options',
+                onSelected: (action) => _fileOption(action, current),
+                itemBuilder: (_) => _fileMenuItems(current),
               ),
             _fileAction(
               switch (widget.themeMode) {
@@ -736,11 +730,29 @@ class _VaultScreenState extends State<VaultScreen> {
                       ),
                     )
                   : current != null
-                  ? DocumentView(
-                      key: ValueKey(current.id),
-                      document: activeDocument!,
-                      onSave: _saveDocument,
-                    )
+                  ? activeDocument != null
+                        ? JsonDocumentView(
+                            key: ValueKey(current.id),
+                            document: activeDocument!,
+                            onSave: _saveDocument,
+                          )
+                        : ListView(
+                            padding: const EdgeInsets.all(18),
+                            children: [
+                              Text(
+                                'Markdown source (not rendered)',
+                                style: Theme.of(context).textTheme.labelMedium,
+                              ),
+                              const SizedBox(height: 12),
+                              SelectableText(
+                                content,
+                                style: const TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          )
                   : RefreshIndicator(
                       onRefresh: _refresh,
                       child: Builder(
@@ -774,71 +786,51 @@ class _VaultScreenState extends State<VaultScreen> {
                             itemCount: visible.length,
                             itemBuilder: (context, i) {
                               final entry = visible[i];
-                              return ListTile(
-                                leading: Icon(
-                                  entry.isFolder
-                                      ? Icons.folder_outlined
-                                      : entry.name.toLowerCase().endsWith(
-                                          '.json',
-                                        )
-                                      ? Icons.data_object
-                                      : Icons.description_outlined,
-                                  color: color.primary,
-                                ),
-                                title: Text(
-                                  entry.isFolder
-                                      ? entry.name
-                                      : entry.name.replaceAll(
-                                          RegExp(
-                                            r'\.(?:md|json)$',
-                                            caseSensitive: false,
+                              return GestureDetector(
+                                onLongPressStart: (details) =>
+                                    _showFileContextMenu(entry, details),
+                                child: ListTile(
+                                  leading: Icon(
+                                    entry.isFolder
+                                        ? Icons.folder_outlined
+                                        : entry.name.toLowerCase().endsWith(
+                                            '.json',
+                                          )
+                                        ? Icons.data_object
+                                        : Icons.description_outlined,
+                                    color: color.primary,
+                                  ),
+                                  title: Text(
+                                    entry.isFolder
+                                        ? entry.name
+                                        : entry.name.replaceAll(
+                                            RegExp(
+                                              r'\.(?:md|json)$',
+                                              caseSensitive: false,
+                                            ),
+                                            '',
                                           ),
-                                          '',
+                                  ),
+                                  subtitle: entry.isFolder
+                                      ? null
+                                      : Text(
+                                          entry.name.toLowerCase().endsWith(
+                                                '.json',
+                                              )
+                                              ? 'JSON · Structured'
+                                              : 'Markdown',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .labelSmall,
                                         ),
-                                ),
-                                subtitle: entry.isFolder
-                                    ? null
-                                    : Text(
-                                        entry.name.toLowerCase().endsWith(
-                                              '.json',
-                                            )
-                                            ? 'JSON · Structured'
-                                            : 'Markdown',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .labelSmall,
-                                      ),
-                                onTap: () => _open(entry),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (entry.name.toLowerCase().endsWith(
-                                      '.md',
-                                    ))
-                                      _fileAction(
-                                        Icons.data_object,
-                                        'Convert ${entry.name} to JSON',
-                                        () => _migrateOne(entry),
-                                      ),
-                                    if (entry.name.toLowerCase().endsWith(
-                                      '.json',
-                                    ))
-                                      _fileAction(
-                                        Icons.file_download_outlined,
-                                        'Export ${entry.name} as Markdown',
-                                        () => _exportOne(entry),
-                                      ),
-                                    _fileAction(
-                                      Icons.edit_outlined,
-                                      'Rename ${entry.name}',
-                                      () => _renameEntry(entry),
-                                    ),
-                                    _fileAction(
-                                      Icons.delete_outline,
-                                      'Delete ${entry.name}',
-                                      () => _deleteEntry(entry),
-                                    ),
-                                  ],
+                                  onTap: () => _open(entry),
+                                  trailing: PopupMenuButton<String>(
+                                    tooltip: 'Options for ${entry.name}',
+                                    onSelected: (action) =>
+                                        _fileOption(action, entry),
+                                    itemBuilder: (context) =>
+                                        _fileMenuItems(entry),
+                                  ),
                                 ),
                               );
                             },
@@ -852,52 +844,4 @@ class _VaultScreenState extends State<VaultScreen> {
       ),
     );
   }
-}
-
-class MarkdownEditor extends StatefulWidget {
-  const MarkdownEditor({super.key, required this.name, required this.initial});
-  final String name, initial;
-  @override
-  State<MarkdownEditor> createState() => _MarkdownEditorState();
-}
-
-class _MarkdownEditorState extends State<MarkdownEditor> {
-  late final TextEditingController controller = TextEditingController(
-    text: widget.initial,
-  );
-  @override
-  void dispose() {
-    controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: Text(widget.name),
-      actions: [
-        TextButton.icon(
-          onPressed: () => Navigator.pop(context, controller.text),
-          icon: const Icon(Icons.check),
-          label: const Text('Save'),
-        ),
-      ],
-    ),
-    body: Padding(
-      padding: const EdgeInsets.all(16),
-      child: TextField(
-        controller: controller,
-        expands: true,
-        maxLines: null,
-        minLines: null,
-        keyboardType: TextInputType.multiline,
-        textAlignVertical: TextAlignVertical.top,
-        style: const TextStyle(fontFamily: 'monospace', fontSize: 15),
-        decoration: const InputDecoration(
-          border: InputBorder.none,
-          hintText: 'Write Markdown…',
-        ),
-      ),
-    ),
-  );
 }

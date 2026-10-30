@@ -1,5 +1,5 @@
 name: secrets_keep
-description: Native Flutter Markdown vault backed by Google Drive.
+description: Native Flutter JSON vault backed by Google Drive.
 publish_to: none
 version: 1.0.0+6
 environment:
@@ -9,7 +9,6 @@ dependencies:
     sdk: flutter
   google_sign_in: ^6.2.2
   http: ^1.4.0
-  flutter_markdown: ^0.7.7
   shared_preferences: ^2.5.3
 dev_dependencies:
   flutter_test:

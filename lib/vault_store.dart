@@ -228,11 +228,7 @@ class GoogleDriveStore implements VaultStore {
       'https://www.googleapis.com/upload/drive/v3/files/${Uri.encodeComponent(id)}?uploadType=media',
       method: 'PATCH',
       body: content,
-      contentType:
-          content.trimLeft().startsWith('{"format":') ||
-              content.contains('"format": "secrets-keep.blocks"')
-          ? 'application/json; charset=utf-8'
-          : 'text/markdown; charset=utf-8',
+      contentType: 'application/json; charset=utf-8',
     );
   }
 
