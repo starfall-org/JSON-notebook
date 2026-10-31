@@ -50,6 +50,86 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+  testWidgets('AppBar, drawer and dialogs respect status/navigation bars', (
+    tester,
+  ) async {
+    const screen = Size(360, 740);
+    const topInset = 28.0;
+    const bottomInset = 34.0;
+    await tester.binding.setSurfaceSize(screen);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: const MediaQueryData(
+            size: screen,
+            padding: EdgeInsets.only(top: topInset, bottom: bottomInset),
+            viewPadding: EdgeInsets.only(top: topInset, bottom: bottomInset),
+          ),
+          child: child!,
+        ),
+        home: const VaultScreen(
+          themeMode: ThemeMode.system,
+          onTheme: _ignoreTheme,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Explore demo'));
+    await tester.pumpAndSettle();
+
+    // Scaffold/AppBar owns the status-bar padding, so toolbar buttons must not
+    // end up underneath the status bar even with edge-to-edge system UI.
+    final toolbarButton = tester.getRect(find.byTooltip('Add'));
+    expect(toolbarButton.top, greaterThanOrEqualTo(topInset));
+    expect(toolbarButton.bottom, lessThan(screen.height - bottomInset));
+
+    await tester.tap(find.byTooltip('Folders'));
+    await tester.pumpAndSettle();
+    final drawer = find.byType(Drawer);
+    final drawerSafe = find
+        .descendant(of: drawer, matching: find.byType(SafeArea))
+        .first;
+    final safe = tester.widget<SafeArea>(drawerSafe);
+    expect(safe.top, isTrue);
+    expect(safe.bottom, isTrue);
+    final drawerContents = find
+        .descendant(of: drawerSafe, matching: find.byType(Column))
+        .first;
+    final drawerBounds = tester.getRect(drawerContents);
+    expect(drawerBounds.top, greaterThanOrEqualTo(topInset));
+    expect(drawerBounds.bottom, lessThanOrEqualTo(screen.height - bottomInset));
+    await tester.tapAt(const Offset(350, 350));
+    await tester.pumpAndSettle();
+
+    // Dialogs use showDialog's built-in SafeArea: don't add padding twice.
+    await tester.tap(find.byTooltip('Add'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('New JSON document'));
+    await tester.pumpAndSettle();
+    final dialogBounds = tester.getRect(find.byType(AlertDialog));
+    expect(dialogBounds.top, greaterThanOrEqualTo(topInset));
+    expect(dialogBounds.bottom, lessThanOrEqualTo(screen.height - bottomInset));
+    await tester.enterText(find.byType(TextFormField).last, 'safe');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('safe'));
+    await tester.pumpAndSettle();
+
+    // The structured JSON editor also stays clear of the bottom gesture bar.
+    final jsonList = find.byType(ListView).first;
+    expect(
+      tester.getRect(jsonList).bottom,
+      lessThanOrEqualTo(screen.height - bottomInset),
+    );
+    await tester.tap(find.byTooltip('Add entry'));
+    await tester.pumpAndSettle();
+    final keyDialog = tester.getRect(find.byType(AlertDialog));
+    expect(keyDialog.top, greaterThanOrEqualTo(topInset));
+    expect(keyDialog.bottom, lessThanOrEqualTo(screen.height - bottomInset));
+    expect(tester.takeException(), isNull);
+  });
 }
 
 void _ignoreTheme(ThemeMode _) {}

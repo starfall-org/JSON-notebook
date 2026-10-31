@@ -49,6 +49,8 @@ Ordinary multiline fenced code is supported, with indentation normalized. **Even
 
 Conversion creates a separate `.json` sibling, verifies its contents and **preserves the original `.md`**. An existing JSON sibling is never overwritten. You can also convert a folder and its subfolders sequentially; conflicts are reported.
 
+The Android UI respects system insets: the Material AppBar handles the top status-bar area, the main `SafeArea(top: false)` keeps file lists and the JSON editor clear of the bottom navigation/gesture bar, and the folder drawer and dialogs respect both edges. Widget tests simulate top and bottom insets on a narrow phone viewport.
+
 ## Development
 
 ```sh
