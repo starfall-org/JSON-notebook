@@ -102,7 +102,7 @@ void main() {
     },
   );
 
-  testWidgets('Values have no independent action bars or array index labels', (
+  testWidgets('Values have individual copy buttons but no array index labels', (
     tester,
   ) async {
     final doc = JsonDocument.parse('{"A":"value","B":{"C":{"D":["e","f"]}}}');
@@ -122,7 +122,7 @@ void main() {
     expect(find.byTooltip('Edit D'), findsOneWidget);
     expect(find.text('[1]'), findsNothing);
     expect(find.text('[2]'), findsNothing);
-    expect(find.byTooltip('Copy value'), findsNothing);
+    expect(find.byTooltip('Copy value'), findsNWidgets(3));
     expect(find.byType(PopupMenuButton), findsNothing);
   });
 
@@ -441,7 +441,7 @@ void main() {
       expect(doc.data, {
         'D': ['e', 'f'],
       });
-      expect(find.byTooltip('Copy value'), findsNothing);
+      expect(find.byTooltip('Copy value'), findsNWidgets(2));
     },
   );
 }

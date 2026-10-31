@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'json_document.dart';
 import 'json_key_label.dart';
@@ -424,27 +425,64 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
     );
   }
 
-  Widget _values(Object value, Color background) {
+  Widget _values(List<Object> path, Object value, Color background) {
     final strings = value is List
         ? value.cast<String>()
         : <String>[value as String];
     if (strings.isEmpty) return const SizedBox.shrink();
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(7),
-      ),
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (final text in strings)
+          for (var index = 0; index < strings.length; index++)
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: SelectableText(
-                text,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+              padding: EdgeInsets.only(top: index == 0 ? 0 : 6),
+              child: Container(
+                key: ValueKey(
+                  'json-value-block-${jsonEncode([...path, index])}',
+                ),
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(10, 4, 2, 4),
+                decoration: BoxDecoration(
+                  color: background,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: SelectableText(
+                          strings[index],
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Copy value',
+                      icon: const Icon(Icons.copy_outlined, size: 18),
+                      padding: const EdgeInsets.all(6),
+                      constraints: const BoxConstraints(
+                        minWidth: 36,
+                        minHeight: 36,
+                      ),
+                      onPressed: () async {
+                        await Clipboard.setData(
+                          ClipboardData(text: strings[index]),
+                        );
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Copied to clipboard')),
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
             ),
         ],
@@ -579,7 +617,8 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
                   },
                 ),
               ),
-              if (!isObject) _values(value, color.surfaceContainerHighest),
+              if (!isObject)
+                _values(path, value, color.surfaceContainerHighest),
               if (isObject && expanded)
                 Padding(
                   padding: const EdgeInsets.only(left: 1),
