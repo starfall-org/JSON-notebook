@@ -103,11 +103,19 @@ class MarkdownToJson {
       if (itemMatch != null) {
         flushText();
         final name = _plainText(itemMatch.group(1)!, preserveLinks: true);
-        // Markdown permits a list at document level: its items become root
-        // JSON keys just like headings do, rather than requiring a heading.
-        final parent = headings.isEmpty
-            ? root
-            : headingContainer(headings.last, i + 1);
+        // A list item belongs to the nearest heading that has no value of
+        // its own. A heading that already received code is a leaf, so skip
+        // it and use the nearest enclosing container (or the root). This
+        // preserves both the heading's code and the item's code instead of
+        // attempting to insert children into a value.
+        Map<String, dynamic> parent = root;
+        for (final heading in headings.reversed) {
+          final value = heading.parent[heading.key];
+          if (value is Map<String, dynamic>) {
+            parent = value;
+            break;
+          }
+        }
         put(parent, name, <String>[], i + 1);
         currentItem = _Item(parent, name);
         continue;

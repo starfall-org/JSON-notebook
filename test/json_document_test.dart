@@ -94,11 +94,46 @@ void main() {
     expect(fromItem.toJson(), MarkdownToJson.convert(withSubheading).toJson());
   });
 
-  test('Heading with a code block refuses nested list items or headings', () {
-    expect(
-      () => MarkdownToJson.convert('# a\n```value```\n- b\n'),
-      throwsFormatException,
-    );
+  test(
+    'After heading code, list items become siblings without losing values',
+    () {
+      const input = '# a\n```\nb\n```\n- **c**\n  ```\n   D\n   ```\n';
+      expect(MarkdownToJson.convert(input).data, {
+        'a': ['b'],
+        'c': ['D'],
+      });
+    },
+  );
+
+  test(
+    'Items after a valued nested heading use the closest empty ancestor',
+    () {
+      const input = '# parent\n## a\n```b```\n- **c**\n```D```\n';
+      expect(MarkdownToJson.convert(input).data, {
+        'parent': {
+          'a': ['b'],
+          'c': ['D'],
+        },
+      });
+    },
+  );
+
+  test('After heading code, several root list items retain their own code', () {
+    const input = '# a\n```b```\n- c\n```D```\n- d\n```E```\n';
+    expect(MarkdownToJson.convert(input).data, {
+      'a': ['b'],
+      'c': ['D'],
+      'd': ['E'],
+    });
+  });
+
+  test('List items without prior heading remain top-level keys', () {
+    expect(MarkdownToJson.convert('- c\n```D```\n').data, {
+      'c': ['D'],
+    });
+  });
+
+  test('A heading with code still cannot contain explicit nested headings', () {
     expect(
       () => MarkdownToJson.convert('# a\n```value```\n## b\n'),
       throwsFormatException,
