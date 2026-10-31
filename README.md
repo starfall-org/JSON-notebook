@@ -15,7 +15,7 @@ Flutter vault for hierarchical **JSON** data stored in Google Drive. Android and
 
 ## Markdown import rule
 
-The one-time Markdown → JSON importer interprets headings as nested keys and fenced code as values. Item lines (`- D`, or `- **D**`) contain lists of their code blocks. This input:
+The one-time Markdown → JSON importer interprets headings as nested keys and fenced code as values. Top-level list items (for example `- **x**`) are valid JSON keys even without a preceding heading. A top-level heading and a top-level item with the same key and fenced code have identical output; even an empty fenced code block is preserved as `[""]`. Item lines (`- D`, or `- **D**`) contain lists of their code blocks. This input:
 
 ````text
 # A

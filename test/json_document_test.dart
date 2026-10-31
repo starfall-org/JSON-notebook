@@ -62,6 +62,64 @@ void main() {
     },
   );
 
+  test('Top-level bold list item without heading becomes empty JSON key', () {
+    expect(MarkdownToJson.convert('- **x**\n').data, {'x': ''});
+    expect(MarkdownToJson.convert('- x\n- **y**\n').data, {'x': '', 'y': ''});
+  });
+
+  test('Top-level heading and list item with empty code are equivalent', () {
+    const heading = '# abc\n```\n```\n';
+    const item = '- abc\n```\n```\n';
+    final headingDocument = MarkdownToJson.convert(heading);
+    final itemDocument = MarkdownToJson.convert(item);
+    expect(headingDocument.data, {
+      'abc': [''],
+    });
+    expect(itemDocument.data, headingDocument.data);
+    expect(itemDocument.toJson(), headingDocument.toJson());
+  });
+
+  test('Top-level headings and list items also match for nonempty code', () {
+    const heading = '# abc\n```txt\ncontent\n```\n';
+    const item = '- **abc**\n```txt\ncontent\n```\n';
+    expect(MarkdownToJson.convert(item).data, {
+      'abc': ['content'],
+    });
+    expect(
+      MarkdownToJson.convert(item).toJson(),
+      MarkdownToJson.convert(heading).toJson(),
+    );
+  });
+
+  test('Top-level list item with one fenced block retains array content', () {
+    const source = '- **x**\n```text\n  content\n```\n';
+    expect(MarkdownToJson.convert(source).data, {
+      'x': ['content'],
+    });
+  });
+
+  test('Top-level items support multiple code values and later headings', () {
+    const source =
+        '- **x**\n```first```\n```second```\n'
+        '- [Docs](https://example.com)\n```link```\n'
+        '# Section\n- Nested\n```value```\n';
+    expect(MarkdownToJson.convert(source).data, {
+      'x': ['first', 'second'],
+      '[Docs](https://example.com)': ['link'],
+      'Section': {
+        'Nested': ['value'],
+      },
+    });
+  });
+
+  test('Top-level duplicate keys are rejected without losing content', () {
+    expect(
+      () => MarkdownToJson.convert('- **x**\n- x\n'),
+      throwsFormatException,
+    );
+    expect(() => MarkdownToJson.convert('- x\n# x\n'), throwsFormatException);
+  });
+
   test('One fenced code block becomes a singleton array', () {
     const source = '# Credentials\n```env\n  TOKEN=abc\n  SECOND=def\n```\n';
     expect(MarkdownToJson.convert(source).data, {

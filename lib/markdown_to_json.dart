@@ -100,11 +100,12 @@ class MarkdownToJson {
       final itemMatch = RegExp(r'^\s*-\s+(.+?)\s*$').firstMatch(line);
       if (itemMatch != null) {
         flushText();
-        if (headings.isEmpty) {
-          throw FormatException('Item without heading at line ${i + 1}');
-        }
         final name = _plainText(itemMatch.group(1)!, preserveLinks: true);
-        final parent = headingContainer(headings.last, i + 1);
+        // Markdown permits a list at document level: its items become root
+        // JSON keys just like headings do, rather than requiring a heading.
+        final parent = headings.isEmpty
+            ? root
+            : headingContainer(headings.last, i + 1);
         put(parent, name, <String>[], i + 1);
         currentItem = _Item(parent, name);
         continue;
