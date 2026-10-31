@@ -43,7 +43,20 @@ class MarkdownToJson {
         return;
       }
       if (headings.isEmpty) {
-        throw FormatException('Code outside any heading at line $line');
+        // A code-only Markdown document still needs a JSON object at root.
+        // Group its standalone code blocks under a stable `content` key,
+        // preserving one array element per block (even for an empty block).
+        final existing = root['content'];
+        if (existing == null) {
+          root['content'] = <String>[value];
+        } else if (existing is List<String>) {
+          existing.add(value);
+        } else {
+          throw FormatException(
+            'Standalone code conflicts with the "content" key (line $line)',
+          );
+        }
+        return;
       }
       final heading = headings.last;
       final existing = heading.parent[heading.key];

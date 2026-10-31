@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:secrets_keep/main.dart';
 
+import 'signed_out_test_session.dart';
+
 void main() {
   test('Demo vault exposes its Markdown files and nested folders', () async {
     final demo = DemoStore();
@@ -19,7 +21,11 @@ void main() {
   testWidgets('Shows a Google sign-in and a demo entry point', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
-        home: VaultScreen(themeMode: ThemeMode.system, onTheme: _noop),
+        home: VaultScreen(
+          themeMode: ThemeMode.system,
+          onTheme: _noop,
+          session: SignedOutTestSession(),
+        ),
       ),
     );
     await tester.pump();

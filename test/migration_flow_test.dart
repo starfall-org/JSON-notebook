@@ -2,15 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:secrets_keep/main.dart';
 
+import 'signed_out_test_session.dart';
+
 void main() {
   testWidgets(
     'File rows have three-dot icon+text menu for Markdown conversion',
     (tester) async {
       await tester.pumpWidget(
         MaterialApp(
-          home: VaultScreen(themeMode: ThemeMode.system, onTheme: (_) {}),
+          home: VaultScreen(
+            themeMode: ThemeMode.system,
+            onTheme: (_) {},
+            session: const SignedOutTestSession(),
+          ),
         ),
       );
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Explore demo'));
       await tester.pumpAndSettle();
       expect(find.byTooltip('Options for github.md'), findsOneWidget);
@@ -33,9 +40,14 @@ void main() {
   testWidgets('Folder three-dot menu does not offer Delete', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: VaultScreen(themeMode: ThemeMode.system, onTheme: (_) {}),
+        home: VaultScreen(
+          themeMode: ThemeMode.system,
+          onTheme: (_) {},
+          session: const SignedOutTestSession(),
+        ),
       ),
     );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Explore demo'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Options for cloud'));
@@ -49,9 +61,14 @@ void main() {
   testWidgets('Folder long-press menu also has no Delete', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: VaultScreen(themeMode: ThemeMode.system, onTheme: (_) {}),
+        home: VaultScreen(
+          themeMode: ThemeMode.system,
+          onTheme: (_) {},
+          session: const SignedOutTestSession(),
+        ),
       ),
     );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Explore demo'));
     await tester.pumpAndSettle();
     await tester.longPress(find.text('cloud'));
@@ -66,9 +83,14 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: VaultScreen(themeMode: ThemeMode.system, onTheme: (_) {}),
+        home: VaultScreen(
+          themeMode: ThemeMode.system,
+          onTheme: (_) {},
+          session: const SignedOutTestSession(),
+        ),
       ),
     );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Explore demo'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Add'));
@@ -100,9 +122,14 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: VaultScreen(themeMode: ThemeMode.system, onTheme: (_) {}),
+        home: VaultScreen(
+          themeMode: ThemeMode.system,
+          onTheme: (_) {},
+          session: const SignedOutTestSession(),
+        ),
       ),
     );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Explore demo'));
     await tester.pumpAndSettle();
     await tester.longPress(find.text('services'));
@@ -118,9 +145,14 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: VaultScreen(themeMode: ThemeMode.system, onTheme: (_) {}),
+        home: VaultScreen(
+          themeMode: ThemeMode.system,
+          onTheme: (_) {},
+          session: const SignedOutTestSession(),
+        ),
       ),
     );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Explore demo'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Add'));
@@ -143,9 +175,14 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
         MaterialApp(
-          home: VaultScreen(themeMode: ThemeMode.system, onTheme: (_) {}),
+          home: VaultScreen(
+            themeMode: ThemeMode.system,
+            onTheme: (_) {},
+            session: const SignedOutTestSession(),
+          ),
         ),
       );
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Explore demo'));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Add'));
@@ -182,9 +219,14 @@ void main() {
   testWidgets('Markdown is not parsed or rendered at runtime', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: VaultScreen(themeMode: ThemeMode.system, onTheme: (_) {}),
+        home: VaultScreen(
+          themeMode: ThemeMode.system,
+          onTheme: (_) {},
+          session: const SignedOutTestSession(),
+        ),
       ),
     );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Explore demo'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('github'));

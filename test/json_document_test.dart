@@ -193,6 +193,61 @@ void main() {
     expect(() => MarkdownToJson.convert('- x\n# x\n'), throwsFormatException);
   });
 
+  test('A Markdown file made solely of code converts to a content array', () {
+    const source = '```env\nTOKEN=abc\nPASSWORD=a_b-c\n```\n';
+    final converted = MarkdownToJson.convert(source);
+    expect(converted.data, {
+      'content': ['TOKEN=abc\nPASSWORD=a_b-c'],
+    });
+    expect(JsonDocument.parse(converted.toJson()).data, converted.data);
+  });
+
+  test('Multiple standalone fenced blocks remain separate array values', () {
+    const source = '```text\nfirst\n```\n\n```\nsecond\nline\n```\n';
+    expect(MarkdownToJson.convert(source).data, {
+      'content': ['first', 'second\nline'],
+    });
+  });
+
+  test('An empty standalone code block is not discarded', () {
+    expect(MarkdownToJson.convert('```\n```\n').data, {
+      'content': [''],
+    });
+  });
+
+  test('Standalone code can precede a heading without mixing values', () {
+    const source = '```first```\n# Other\n```second```\n';
+    expect(MarkdownToJson.convert(source).data, {
+      'content': ['first'],
+      'Other': ['second'],
+    });
+    expect(
+      () => MarkdownToJson.convert('```first```\n# content\n'),
+      throwsFormatException,
+    );
+  });
+
+  test(
+    'Migration accepts code-only Markdown and preserves the source file',
+    () async {
+      final store = DemoStore();
+      final source = await store.create('root', 'code_only.md');
+      const original = '```bash\necho hello\n```\n';
+      await store.write(source.id, original);
+      final record = await VaultMigration(store).migrate(source);
+      expect(record.state, MigrationState.created);
+      expect(record.destination.name, 'code_only.json');
+      expect(JsonDocument.parse(await store.read(record.destination.id)).data, {
+        'content': ['echo hello'],
+      });
+      expect(await store.read(source.id), original);
+      expect(
+        (await VaultMigration(store).migrate(source)).state,
+        MigrationState.skipped,
+      );
+    },
+  );
+
   test('One fenced code block becomes a singleton array', () {
     const source = '# Credentials\n```env\n  TOKEN=abc\n  SECOND=def\n```\n';
     expect(MarkdownToJson.convert(source).data, {

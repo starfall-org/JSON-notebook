@@ -62,14 +62,48 @@ class _SecretKeepsState extends State<SecretKeeps> {
   );
 }
 
+/// The signed-in account workflow, separate from the document store. Tests
+/// can inject a controllable session without using Google platform channels.
+abstract class VaultSession {
+  Future<VaultStore?> restore();
+  Future<VaultStore?> signIn();
+  Future<void> signOut();
+}
+
+class _GoogleVaultSession implements VaultSession {
+  final GoogleSignIn _google = GoogleSignIn(
+    scopes: [driveScope],
+    serverClientId: googleWebClientId,
+  );
+
+  @override
+  Future<VaultStore?> restore() async {
+    final account = await _google.signInSilently();
+    return account == null ? null : GoogleDriveStore(account, signIn: _google);
+  }
+
+  @override
+  Future<VaultStore?> signIn() async {
+    final account = await _google.signIn();
+    return account == null ? null : GoogleDriveStore(account, signIn: _google);
+  }
+
+  @override
+  Future<void> signOut() async {
+    await _google.signOut();
+  }
+}
+
 class VaultScreen extends StatefulWidget {
   const VaultScreen({
     super.key,
     required this.themeMode,
     required this.onTheme,
+    this.session,
   });
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onTheme;
+  final VaultSession? session;
   @override
   State<VaultScreen> createState() => _VaultScreenState();
 }
@@ -77,10 +111,9 @@ class VaultScreen extends StatefulWidget {
 class _VaultScreenState extends State<VaultScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _documentKey = GlobalKey<JsonDocumentViewState>();
-  final google = GoogleSignIn(
-    scopes: [driveScope],
-    serverClientId: googleWebClientId,
-  );
+  late final VaultSession _session;
+  bool _restoringSession = true;
+  bool _signedIn = false;
   VaultStore? store;
   final List<DriveEntry> path = [];
   List<DriveEntry> entries = [];
@@ -93,15 +126,22 @@ class _VaultScreenState extends State<VaultScreen> {
   @override
   void initState() {
     super.initState();
+    _session = widget.session ?? _GoogleVaultSession();
     _restore();
   }
 
   Future<void> _restore() async {
     try {
-      final user = await google.signInSilently();
-      if (user != null) await _connect(GoogleDriveStore(user, signIn: google));
+      final restoredStore = await _session.restore();
+      if (restoredStore != null) {
+        await _connect(restoredStore);
+        if (mounted && store != null) setState(() => _signedIn = true);
+      }
     } catch (_) {
-      /* Demo mode remains available without an account. */
+      // A missing or expired session is signed out; the Login screen appears
+      // only after the silent restore has actually completed.
+    } finally {
+      if (mounted) setState(() => _restoringSession = false);
     }
   }
 
@@ -138,11 +178,21 @@ class _VaultScreenState extends State<VaultScreen> {
     }
   });
   Future<void> _login() async {
+    if (_restoringSession || busy) return;
+    setState(() {
+      _restoringSession = true;
+      error = '';
+    });
     try {
-      final user = await google.signIn();
-      if (user != null) await _connect(GoogleDriveStore(user, signIn: google));
+      final selectedStore = await _session.signIn();
+      if (selectedStore != null) {
+        await _connect(selectedStore);
+        if (mounted && store != null) setState(() => _signedIn = true);
+      }
     } catch (e) {
       if (mounted) setState(() => error = e.toString());
+    } finally {
+      if (mounted) setState(() => _restoringSession = false);
     }
   }
 
@@ -305,16 +355,22 @@ class _VaultScreenState extends State<VaultScreen> {
   }
 
   Future<void> _logout() async {
-    await google.signOut();
-    if (mounted) {
-      setState(() {
-        store = null;
-        path.clear();
-        entries = [];
-        openFile = null;
-        activeDocument = null;
-        _resetSearch();
-      });
+    try {
+      await _session.signOut();
+      if (mounted) {
+        setState(() {
+          _signedIn = false;
+          _restoringSession = false;
+          store = null;
+          path.clear();
+          entries = [];
+          openFile = null;
+          activeDocument = null;
+          _resetSearch();
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString());
     }
   }
 
@@ -721,8 +777,7 @@ class _VaultScreenState extends State<VaultScreen> {
                     Icons.brightness_auto_outlined,
                     'Theme: ${widget.themeMode.name}',
                   ),
-                  if (store is CachedVaultStore &&
-                      (store! as CachedVaultStore).source is GoogleDriveStore)
+                  if (_signedIn)
                     _menuOption('logout', Icons.logout, 'Sign out'),
                 ],
               ),
@@ -747,7 +802,14 @@ class _VaultScreenState extends State<VaultScreen> {
                   ],
                 ),
               Expanded(
-                child: store == null
+                child: _restoringSession
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                          key: ValueKey('vault-session-loading'),
+                          semanticsLabel: 'Restoring session',
+                        ),
+                      )
+                    : store == null
                     ? Center(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,

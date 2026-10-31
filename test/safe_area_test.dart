@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:secrets_keep/main.dart';
 
+import 'signed_out_test_session.dart';
+
 void main() {
   testWidgets('Main content respects bottom system navigation inset', (
     tester,
@@ -23,6 +25,7 @@ void main() {
           child: const VaultScreen(
             themeMode: ThemeMode.system,
             onTheme: _ignoreTheme,
+            session: SignedOutTestSession(),
           ),
         ),
       ),
@@ -72,6 +75,7 @@ void main() {
         home: const VaultScreen(
           themeMode: ThemeMode.system,
           onTheme: _ignoreTheme,
+          session: SignedOutTestSession(),
         ),
       ),
     );
