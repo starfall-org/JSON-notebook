@@ -724,162 +724,170 @@ class _VaultScreenState extends State<VaultScreen> {
               ),
           ],
         ),
-        body: Column(
-          children: [
-            if (busy) const LinearProgressIndicator(),
-            if (error.isNotEmpty)
-              MaterialBanner(
-                content: SelectableText(error),
-                actions: [
-                  TextButton(
-                    onPressed: () => setState(() => error = ''),
-                    child: const Text('Dismiss'),
-                  ),
-                ],
-              ),
-            Expanded(
-              child: store == null
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.lock_outline,
-                            size: 52,
-                            color: color.primary,
-                          ),
-                          const SizedBox(height: 20),
-                          Text(
-                            'Secrets Keep',
-                            style: Theme.of(context).textTheme.headlineMedium,
-                          ),
-                          const SizedBox(height: 18),
-                          FilledButton.icon(
-                            onPressed: _login,
-                            icon: const Icon(Icons.login),
-                            label: const Text('Continue with Google'),
-                          ),
-                          const SizedBox(height: 8),
-                          TextButton(
-                            onPressed: () => _connect(DemoStore()),
-                            child: const Text('Explore demo'),
-                          ),
-                        ],
-                      ),
-                    )
-                  : current != null
-                  ? activeDocument != null
-                        ? JsonDocumentView(
-                            key: _documentKey,
-                            documentId: current.id,
-                            document: activeDocument!,
-                            searchQuery: search ? query : '',
-                            onSave: _saveDocument,
-                          )
-                        : ListView(
-                            padding: const EdgeInsets.all(18),
-                            children: [
-                              Text(
-                                'Markdown source (not rendered)',
-                                style: Theme.of(context).textTheme.labelMedium,
-                              ),
-                              const SizedBox(height: 12),
-                              SelectableText(
-                                content,
-                                style: const TextStyle(
-                                  fontFamily: 'monospace',
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ],
-                          )
-                  : RefreshIndicator(
-                      onRefresh: _refresh,
-                      child: Builder(
-                        builder: (context) {
-                          final visible =
-                              entries
-                                  .where(
-                                    (entry) =>
-                                        (entry.isFolder ||
-                                            (entry.name.toLowerCase().endsWith(
-                                                  '.md',
-                                                ) ||
-                                                entry.name
-                                                    .toLowerCase()
-                                                    .endsWith('.json'))) &&
-                                        entry.name.toLowerCase().contains(
-                                          query.toLowerCase(),
-                                        ),
-                                  )
-                                  .toList()
-                                ..sort((a, b) {
-                                  if (a.isFolder != b.isFolder) {
-                                    return a.isFolder ? -1 : 1;
-                                  }
-                                  return a.name.toLowerCase().compareTo(
-                                    b.name.toLowerCase(),
-                                  );
-                                });
-                          return ListView.builder(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            itemCount: visible.length,
-                            itemBuilder: (context, i) {
-                              final entry = visible[i];
-                              return GestureDetector(
-                                onLongPressStart: (details) =>
-                                    _showFileContextMenu(entry, details),
-                                child: ListTile(
-                                  leading: Icon(
-                                    entry.isFolder
-                                        ? Icons.folder_outlined
-                                        : entry.name.toLowerCase().endsWith(
-                                            '.json',
-                                          )
-                                        ? Icons.data_object
-                                        : Icons.description_outlined,
-                                    color: color.primary,
-                                  ),
-                                  title: Text(
-                                    entry.isFolder
-                                        ? entry.name
-                                        : entry.name.replaceAll(
-                                            RegExp(
-                                              r'\.(?:md|json)$',
-                                              caseSensitive: false,
-                                            ),
-                                            '',
-                                          ),
-                                  ),
-                                  subtitle: entry.isFolder
-                                      ? null
-                                      : Text(
-                                          entry.name.toLowerCase().endsWith(
-                                                '.json',
-                                              )
-                                              ? 'JSON · Structured'
-                                              : 'Markdown',
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .labelSmall,
-                                        ),
-                                  onTap: () => _open(entry),
-                                  trailing: PopupMenuButton<String>(
-                                    tooltip: 'Options for ${entry.name}',
-                                    onSelected: (action) =>
-                                        _fileOption(action, entry),
-                                    itemBuilder: (context) =>
-                                        _fileMenuItems(entry),
-                                  ),
-                                ),
-                              );
-                            },
-                          );
-                        },
-                      ),
+        // The AppBar already handles the status-bar inset. Protect the
+        // scrollable body from Android's gesture/navigation area without
+        // adding the top inset twice (including with edge-to-edge enabled).
+        body: SafeArea(
+          top: false,
+          child: Column(
+            children: [
+              if (busy) const LinearProgressIndicator(),
+              if (error.isNotEmpty)
+                MaterialBanner(
+                  content: SelectableText(error),
+                  actions: [
+                    TextButton(
+                      onPressed: () => setState(() => error = ''),
+                      child: const Text('Dismiss'),
                     ),
-            ),
-          ],
+                  ],
+                ),
+              Expanded(
+                child: store == null
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.lock_outline,
+                              size: 52,
+                              color: color.primary,
+                            ),
+                            const SizedBox(height: 20),
+                            Text(
+                              'Secrets Keep',
+                              style: Theme.of(context).textTheme.headlineMedium,
+                            ),
+                            const SizedBox(height: 18),
+                            FilledButton.icon(
+                              onPressed: _login,
+                              icon: const Icon(Icons.login),
+                              label: const Text('Continue with Google'),
+                            ),
+                            const SizedBox(height: 8),
+                            TextButton(
+                              onPressed: () => _connect(DemoStore()),
+                              child: const Text('Explore demo'),
+                            ),
+                          ],
+                        ),
+                      )
+                    : current != null
+                    ? activeDocument != null
+                          ? JsonDocumentView(
+                              key: _documentKey,
+                              documentId: current.id,
+                              document: activeDocument!,
+                              searchQuery: search ? query : '',
+                              onSave: _saveDocument,
+                            )
+                          : ListView(
+                              padding: const EdgeInsets.all(18),
+                              children: [
+                                Text(
+                                  'Markdown source (not rendered)',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelMedium,
+                                ),
+                                const SizedBox(height: 12),
+                                SelectableText(
+                                  content,
+                                  style: const TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            )
+                    : RefreshIndicator(
+                        onRefresh: _refresh,
+                        child: Builder(
+                          builder: (context) {
+                            final visible =
+                                entries
+                                    .where(
+                                      (entry) =>
+                                          (entry.isFolder ||
+                                              (entry.name
+                                                      .toLowerCase()
+                                                      .endsWith('.md') ||
+                                                  entry.name
+                                                      .toLowerCase()
+                                                      .endsWith('.json'))) &&
+                                          entry.name.toLowerCase().contains(
+                                            query.toLowerCase(),
+                                          ),
+                                    )
+                                    .toList()
+                                  ..sort((a, b) {
+                                    if (a.isFolder != b.isFolder) {
+                                      return a.isFolder ? -1 : 1;
+                                    }
+                                    return a.name.toLowerCase().compareTo(
+                                      b.name.toLowerCase(),
+                                    );
+                                  });
+                            return ListView.builder(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              itemCount: visible.length,
+                              itemBuilder: (context, i) {
+                                final entry = visible[i];
+                                return GestureDetector(
+                                  onLongPressStart: (details) =>
+                                      _showFileContextMenu(entry, details),
+                                  child: ListTile(
+                                    leading: Icon(
+                                      entry.isFolder
+                                          ? Icons.folder_outlined
+                                          : entry.name.toLowerCase().endsWith(
+                                              '.json',
+                                            )
+                                          ? Icons.data_object
+                                          : Icons.description_outlined,
+                                      color: color.primary,
+                                    ),
+                                    title: Text(
+                                      entry.isFolder
+                                          ? entry.name
+                                          : entry.name.replaceAll(
+                                              RegExp(
+                                                r'\.(?:md|json)$',
+                                                caseSensitive: false,
+                                              ),
+                                              '',
+                                            ),
+                                    ),
+                                    subtitle: entry.isFolder
+                                        ? null
+                                        : Text(
+                                            entry.name.toLowerCase().endsWith(
+                                                  '.json',
+                                                )
+                                                ? 'JSON · Structured'
+                                                : 'Markdown',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .labelSmall,
+                                          ),
+                                    onTap: () => _open(entry),
+                                    trailing: PopupMenuButton<String>(
+                                      tooltip: 'Options for ${entry.name}',
+                                      onSelected: (action) =>
+                                          _fileOption(action, entry),
+                                      itemBuilder: (context) =>
+                                          _fileMenuItems(entry),
+                                    ),
+                                  ),
+                                );
+                              },
+                            );
+                          },
+                        ),
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
