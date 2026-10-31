@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import 'json_document.dart';
+import 'json_key_label.dart';
 import 'json_search.dart';
 
 class JsonDocumentView extends StatefulWidget {
@@ -548,10 +549,8 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
                               }),
                             ),
                           Expanded(
-                            child: Text(
-                              label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            child: JsonKeyLabel(
+                              rawKey: label,
                               style: Theme.of(context).textTheme.titleSmall,
                             ),
                           ),

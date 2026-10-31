@@ -7,7 +7,7 @@ Flutter vault for hierarchical **JSON** data stored in Google Drive. Android and
 - `.json`: parsed as a native JSON object, with expandable nested sections and lists. Edit/add/delete keys or values, reorder entries, copy text, and save the resulting document to Drive. **Every leaf value is a string**; numbers, booleans and null are rejected rather than silently converted.
 - An **Add** button appears only for an empty key or a key containing child keys. Keys that already have a string or an array of values show **Edit** instead of Add. The Add/Edit dialog accepts zero or more Value fields: zero → `""`, one → a string, and two or more → an array of strings. Adding a child beneath an empty-string key turns it into a nested object; existing nonempty values are preserved. Values have no individual toolbar. The key title and its action toolbar are on the same horizontal line; Delete is inside the Edit dialog with an explicit confirmation, not on the key toolbar. The UI shows no type labels or array indices.
 - `.md`: displayed as **raw source only**; the app does not render it as Markdown or use a Markdown block parser in the editor. Tap the file's `⋮` menu (or long-press its row) and choose **Convert to JSON**.
-- Every file and folder has a three-dot menu with icon + text actions. Markdown files additionally have **Convert to JSON**.
+- File/folder context menus use icon + text actions. JSON files and folders only offer **Rename**; Markdown files offer **Convert to JSON**, Rename and Delete to avoid accidentally deleting structured vault data.
 - JSON files are saved with **2-space indentation** and a final newline (`JsonEncoder.withIndent('  ')`). They are plain JSON, with no custom `format`, `version`, `blocks` or `sourceMarkdown` wrapper.
 - **JSON drag & drop:** long-press the grip at the left of a key, then drag to another key's header. Drop at the top or bottom of the header to insert before/after it, or in the middle to move inside a nested object or empty-string key. The complete subtree moves intact (including array values); existing values are never overwritten. Duplicate destination keys, cycles (moving into own descendants), and invalid target types are rejected. The source dims and valid destinations highlight while dragging. Dragging is disabled during Search and while a file save is underway. Up/down buttons remain as a non-drag ordering alternative.
 - **Search and Add are in the AppBar.** Search is collapsed by default. In a JSON document, Search matches nested keys and all string values (including array elements), case-insensitively and after trimming whitespace. Matching branches expand automatically, unrelated branches are hidden, and clearing Search restores the prior expand/collapse state. The document's Add button opens the root entry editor.
@@ -33,7 +33,7 @@ creates the following **formatted** file:
 
 ```json
 {
-  "A": "value",
+  "A": ["value"],
   "B": {
     "C": {
       "D": [
@@ -45,7 +45,7 @@ creates the following **formatted** file:
 }
 ```
 
-Ordinary multiline fenced code is supported, with its indentation normalized. Headings/items with no values become empty strings, and those with one value become strings. If syntax cannot be represented safely in the requested structure, conversion reports a line-specific error instead of silently discarding text. Duplicate keys are rejected.
+Ordinary multiline fenced code is supported, with indentation normalized. **Even one code block is stored as a one-element JSON array** (for example `["content"]`), while a heading/item without any values becomes an empty string. Presentation-only Markdown, including table separators, padding and layout tags, is cleaned automatically while retaining the text and table cells; fenced code content is never reformatted. The converter preserves Markdown hyperlink names such as `[Docs](https://example.com)` as actual JSON keys. Within the JSON editor those keys render as tappable links, while editing, searching and saving still use their original raw key string. Structural conflicts, duplicate keys and unclosed code fences still produce explicit errors rather than overwriting data.
 
 Conversion creates a separate `.json` sibling, verifies its contents and **preserves the original `.md`**. An existing JSON sibling is never overwritten. You can also convert a folder and its subfolders sequentially; conflicts are reported.
 

@@ -14,7 +14,7 @@ void main() {
           '# A\n```\nvalue\n```\n# B\n## C\n- D\n   ```e```\n   ```f```\n';
       final json = MarkdownToJson.convert(source);
       expect(json.data, {
-        'A': 'value',
+        'A': ['value'],
         'B': {
           'C': {
             'D': ['e', 'f'],
@@ -23,7 +23,7 @@ void main() {
       });
       expect(
         json.toJson(),
-        '{\n  "A": "value",\n  "B": {\n    "C": {\n      "D": [\n        "e",\n        "f"\n      ]\n    }\n  }\n}\n',
+        '{\n  "A": [\n    "value"\n  ],\n  "B": {\n    "C": {\n      "D": [\n        "e",\n        "f"\n      ]\n    }\n  }\n}\n',
       );
     },
   );
@@ -34,7 +34,7 @@ void main() {
     expect(MarkdownToJson.convert(source).data, {
       'Services': {
         'Production': {
-          'Notes': 'API_URL=https://example.internal\nTOKEN=demo-value',
+          'Notes': ['API_URL=https://example.internal\nTOKEN=demo-value'],
         },
       },
     });
@@ -45,7 +45,7 @@ void main() {
     () {
       expect(
         () => MarkdownToJson.convert('# A\nplain content\n'),
-        throwsFormatException,
+        returnsNormally,
       );
       expect(
         () => MarkdownToJson.convert('# A\n```value```\n# A\n```other```\n'),
@@ -62,6 +62,86 @@ void main() {
     },
   );
 
+  test('One fenced code block becomes a singleton array', () {
+    const source = '# Credentials\n```env\n  TOKEN=abc\n  SECOND=def\n```\n';
+    expect(MarkdownToJson.convert(source).data, {
+      'Credentials': ['TOKEN=abc\nSECOND=def'],
+    });
+  });
+
+  test('One inline code block becomes a singleton array under an item', () {
+    const source = '# Vault\n## Production\n- **ApiKey**\n```SECRET_raw```\n';
+    expect(MarkdownToJson.convert(source).data, {
+      'Vault': {
+        'Production': {
+          'ApiKey': ['SECRET_raw'],
+        },
+      },
+    });
+  });
+
+  test('Keeps Markdown hyperlinks in JSON key names during conversion', () {
+    const source =
+        '# **[Docs](https://example.com/a?x=1&y=2)**\n'
+        '- **[Api](https://service.example/api)**\n'
+        '```env\nTOKEN=a_b-c\n```\n';
+    final result = MarkdownToJson.convert(source);
+    expect(result.data, {
+      '[Docs](https://example.com/a?x=1&y=2)': {
+        '[Api](https://service.example/api)': ['TOKEN=a_b-c'],
+      },
+    });
+    expect(JsonDocument.parse(result.toJson()).data, result.data);
+  });
+
+  test('Markdown tables are cleaned while their cells survive', () {
+    const source =
+        '# Vault\n| Environment | Key |\n| :--- | ---: |\n'
+        '| Prod | s3cr3t |\n| Stage | value\\|tail |\n';
+    expect(MarkdownToJson.convert(source).data, {
+      'Vault': [
+        'Environment: Prod; Key: s3cr3t\n'
+            'Environment: Stage; Key: value|tail',
+      ],
+    });
+  });
+
+  test(
+    'Ignores padding/HTML wrappers and decoration while preserving content',
+    () {
+      const source =
+          '# Vault\n- Notes\n<div style="padding:16px">\n'
+          '> **Important** login\n</div>\n---\n'
+          '<span style="padding:4px">alpha</span>\n';
+      expect(MarkdownToJson.convert(source).data, {
+        'Vault': {
+          'Notes': ['Important login\nalpha'],
+        },
+      });
+    },
+  );
+
+  test('Unknown angle-bracket content is not deleted by markup cleanup', () {
+    const source = '# Vault\n<API_TOKEN> = live\n';
+    expect(MarkdownToJson.convert(source).data, {
+      'Vault': ['<API_TOKEN> = live'],
+    });
+  });
+
+  test('Markdown symbols inside fenced code are preserved verbatim', () {
+    const source =
+        '# Vault\n```text\n| A | B |\n&tag;<secret>\n[a](https://x.example)\n```\n';
+    expect(MarkdownToJson.convert(source).data, {
+      'Vault': ['| A | B |\n&tag;<secret>\n[a](https://x.example)'],
+    });
+  });
+
+  test('Plain paragraphs no longer abort a conversion', () {
+    expect(MarkdownToJson.convert('# A\nplain content\n').data, {
+      'A': ['plain content'],
+    });
+  });
+
   test('Plain JSON is always indented two spaces and ends with newline', () {
     final doc = JsonDocument.parse('{"A":"value","B":{"C":{"D":["e","f"]}}}');
     expect(doc.toJson(), contains('    "C": {'));
@@ -69,16 +149,22 @@ void main() {
     expect(jsonDecode(doc.toJson()), doc.data);
   });
 
-  test('Markdown import uses strings for zero and one value fields', () {
-    const source =
-        '# Empty\n# Tree\n## Node\n- Blank\n- Single\n```text\nonly\n```\n';
-    expect(MarkdownToJson.convert(source).data, {
-      'Empty': '',
-      'Tree': {
-        'Node': {'Blank': '', 'Single': 'only'},
-      },
-    });
-  });
+  test(
+    'Markdown import uses empty strings without content and arrays for code',
+    () {
+      const source =
+          '# Empty\n# Tree\n## Node\n- Blank\n- Single\n```text\nonly\n```\n';
+      expect(MarkdownToJson.convert(source).data, {
+        'Empty': '',
+        'Tree': {
+          'Node': {
+            'Blank': '',
+            'Single': ['only'],
+          },
+        },
+      });
+    },
+  );
 
   test('Field count and nested promotion follow JSON value rules', () {
     expect(JsonDocument.valueFromFields([]), '');
