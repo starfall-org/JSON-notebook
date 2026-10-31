@@ -1,7 +1,28 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Secrets are read locally at configuration time, never checked into Git.
+// Both files live at the Flutter project root, one level above android/.
+val releaseKeystore = rootProject.file("../release.jks")
+val releaseEnv = rootProject.file("../.env")
+val releaseProperties = Properties().apply {
+    if (releaseEnv.isFile) {
+        releaseEnv.inputStream().use { load(it) }
+    }
+}
+val releasePropertyKeys = listOf("KEYSTORE_PASSWORD", "KEY_PASSWORD", "KEY_ALIAS")
+val releaseSigningReady = releaseKeystore.isFile && releasePropertyKeys.all { key ->
+    !releaseProperties.getProperty(key).isNullOrBlank()
+}
+if (!releaseSigningReady && gradle.startParameter.taskNames.any {
+        it.contains("release", ignoreCase = true)
+    }) {
+    error("Release signing requires release.jks and KEYSTORE_PASSWORD, KEY_PASSWORD, KEY_ALIAS in .env")
 }
 
 android {
@@ -29,11 +50,25 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (releaseSigningReady) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = releaseProperties.getProperty("KEYSTORE_PASSWORD")
+                keyAlias = releaseProperties.getProperty("KEY_ALIAS")
+                keyPassword = releaseProperties.getProperty("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Never use the debug signing key for production APKs.
+            signingConfig = if (releaseSigningReady) {
+                signingConfigs.getByName("release")
+            } else {
+                null
+            }
         }
     }
 }
