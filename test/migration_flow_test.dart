@@ -30,6 +30,71 @@ void main() {
     },
   );
 
+  testWidgets('Folder three-dot menu does not offer Delete', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VaultScreen(themeMode: ThemeMode.system, onTheme: (_) {}),
+      ),
+    );
+    await tester.tap(find.text('Explore demo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Options for cloud'));
+    await tester.pumpAndSettle();
+    expect(find.text('Rename'), findsOneWidget);
+    expect(find.text('Delete'), findsNothing);
+    expect(find.text('Convert to JSON'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Folder long-press menu also has no Delete', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VaultScreen(themeMode: ThemeMode.system, onTheme: (_) {}),
+      ),
+    );
+    await tester.tap(find.text('Explore demo'));
+    await tester.pumpAndSettle();
+    await tester.longPress(find.text('cloud'));
+    await tester.pumpAndSettle();
+    expect(find.text('Rename'), findsOneWidget);
+    expect(find.text('Delete'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('JSON three-dot and long-press menus do not offer Delete', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VaultScreen(themeMode: ThemeMode.system, onTheme: (_) {}),
+      ),
+    );
+    await tester.tap(find.text('Explore demo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Add'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('New JSON document'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).last, 'vault');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Options for vault.json'));
+    await tester.pumpAndSettle();
+    expect(find.text('Rename'), findsOneWidget);
+    expect(find.text('Delete'), findsNothing);
+    await tester.tap(find.text('Rename'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.text('vault'));
+    await tester.pumpAndSettle();
+    expect(find.text('Rename'), findsOneWidget);
+    expect(find.text('Delete'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Long press on Markdown file opens icon+text context menu', (
     tester,
   ) async {

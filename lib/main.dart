@@ -543,7 +543,9 @@ class _VaultScreenState extends State<VaultScreen> {
     if (entry.name.toLowerCase().endsWith('.md'))
       _menuOption('convert', Icons.data_object, 'Convert to JSON'),
     _menuOption('rename', Icons.edit_outlined, 'Rename'),
-    _menuOption('delete', Icons.delete_outline, 'Delete'),
+    // Deletion is available only for Markdown, never for JSON or folders.
+    if (!entry.isFolder && entry.name.toLowerCase().endsWith('.md'))
+      _menuOption('delete', Icons.delete_outline, 'Delete'),
   ];
 
   Future<void> _showFileContextMenu(
@@ -589,7 +591,9 @@ class _VaultScreenState extends State<VaultScreen> {
       case 'rename':
         await _renameEntry(entry);
       case 'delete':
-        await _deleteEntry(entry);
+        if (!entry.isFolder && entry.name.toLowerCase().endsWith('.md')) {
+          await _deleteEntry(entry);
+        }
     }
   }
 
