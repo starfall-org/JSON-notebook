@@ -67,6 +67,44 @@ void main() {
     expect(MarkdownToJson.convert('- x\n- **y**\n').data, {'x': '', 'y': ''});
   });
 
+  test(
+    'Heading without code owns following list items just like subheadings',
+    () {
+      const withItem = '# a\n- b\n';
+      const withSubheading = '# a\n## b\n';
+      final fromItem = MarkdownToJson.convert(withItem);
+      final fromSubheading = MarkdownToJson.convert(withSubheading);
+      expect(fromItem.data, {
+        'a': {'b': ''},
+      });
+      expect(fromItem.toJson(), fromSubheading.toJson());
+    },
+  );
+
+  test('List item and subheading preserve the same child code block', () {
+    const withItem = '# a\n- b\n```\ncontent\n```\n- c\n';
+    const withSubheading = '# a\n## b\n```\ncontent\n```\n## c\n';
+    final fromItem = MarkdownToJson.convert(withItem);
+    expect(fromItem.data, {
+      'a': {
+        'b': ['content'],
+        'c': '',
+      },
+    });
+    expect(fromItem.toJson(), MarkdownToJson.convert(withSubheading).toJson());
+  });
+
+  test('Heading with a code block refuses nested list items or headings', () {
+    expect(
+      () => MarkdownToJson.convert('# a\n```value```\n- b\n'),
+      throwsFormatException,
+    );
+    expect(
+      () => MarkdownToJson.convert('# a\n```value```\n## b\n'),
+      throwsFormatException,
+    );
+  });
+
   test('Top-level heading and list item with empty code are equivalent', () {
     const heading = '# abc\n```\n```\n';
     const item = '- abc\n```\n```\n';

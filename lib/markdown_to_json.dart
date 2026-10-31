@@ -28,6 +28,8 @@ class MarkdownToJson {
     }
 
     Map<String, dynamic> headingContainer(_Heading heading, int line) {
+      // A heading with no code block owns subsequent list items and headings.
+      // '# a' + '- b' and '# a' + '## b' have the same nested JSON shape.
       final value = heading.parent[heading.key];
       if (value is Map<String, dynamic>) return value;
       throw FormatException(
