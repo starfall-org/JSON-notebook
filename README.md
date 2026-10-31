@@ -59,6 +59,10 @@ flutter run -d chrome
 flutter build web --release
 ```
 
+### Signed Android release
+
+Place the local `release.jks` and `.env` with `KEYSTORE_PASSWORD`, `KEY_PASSWORD`, and `KEY_ALIAS` at the project root (both must remain gitignored). Use `scripts/build-release.sh` instead of calling Gradle directly: it limits the build to two CPUs/one Gradle worker, stores intermediate build outputs in temporary RAM, and checks that each ABI contains both `libflutter.so` **and `libapp.so`**. Some Flutter/Android Gradle Plugin versions have produced release APKs without `libapp.so`, which crash immediately when opened. If necessary, the script adds the already-compiled AOT library, aligns and re-signs the APK with the release keystore. Do not publish until `python3 scripts/verify-release-apks.py` passes on all three output APKs. The original keystore and passwords must never be uploaded.
+
 Google Drive authorization must be configured for the deployed web origin or Android signing fingerprint. Real-account authentication is not verified by demo tests. Secrets are cached in RAM only, not unencrypted app preferences. Destructive file actions require confirmation; Drive items are trashed where supported.
 
 ### ADB hot reload
