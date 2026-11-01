@@ -1,17 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'document_view.dart';
 import 'folder_drawer.dart';
 import 'json_document.dart';
+import 'system_bars.dart';
 import 'vault_migration.dart';
 import 'vault_naming.dart';
 import 'vault_store.dart';
 
 export 'vault_store.dart';
 
-void main() => runApp(const SecretKeeps());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await configureSystemBars();
+  runApp(const SecretKeeps());
+}
 
 class SecretKeeps extends StatefulWidget {
   const SecretKeeps({super.key});
@@ -46,6 +52,15 @@ class _SecretKeepsState extends State<SecretKeeps> {
   Widget build(BuildContext context) => MaterialApp(
     title: 'Secrets Keep',
     debugShowCheckedModeBanner: false,
+    builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+      value: navigationBarStyle(
+        navigationBrightness(
+          themeMode,
+          MediaQuery.platformBrightnessOf(context),
+        ),
+      ),
+      child: child ?? const SizedBox.shrink(),
+    ),
     themeMode: themeMode,
     theme: ThemeData(
       colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
