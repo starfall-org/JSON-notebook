@@ -65,7 +65,34 @@ flutter build web --release
 
 Place the local `release.jks` and `.env` with `KEYSTORE_PASSWORD`, `KEY_PASSWORD`, and `KEY_ALIAS` at the project root (both must remain gitignored). Use `scripts/build-release.sh` instead of calling Gradle directly: it limits the build to two CPUs/one Gradle worker, stores intermediate build outputs in temporary RAM, and checks that each ABI contains both `libflutter.so` **and `libapp.so`**. Some Flutter/Android Gradle Plugin versions have produced release APKs without `libapp.so`, which crash immediately when opened. If necessary, the script adds the already-compiled AOT library, aligns and re-signs the APK with the release keystore. Do not publish until `python3 scripts/verify-release-apks.py` passes on all three output APKs. The original keystore and passwords must never be uploaded.
 
-Google Drive authorization must be configured for the deployed web origin or Android signing fingerprint. Real-account authentication is not verified by demo tests. Secrets are cached in RAM only, not unencrypted app preferences. Destructive file actions require confirmation; Drive items are trashed where supported.
+### Firebase Authentication and Google Drive
+
+Secrets Keep uses Firebase Authentication with the Google provider. Web login uses
+`FirebaseAuth.signInWithPopup`, while Android signs in with Google Sign-In and
+passes its Google credential into `FirebaseAuth.signInWithCredential`.
+The Firebase project is `awesome-89e82`; its configured Firebase Web App is
+`secrets-keep-web`. Google Sign-In must remain enabled at
+[Firebase Authentication](https://console.firebase.google.com/project/awesome-89e82/authentication/providers),
+and the Hosting domain `awesome-89e82.web.app` must be in Authorized domains.
+The shared Firebase Auth project is also used by other apps, so the local
+`firebase.json` only deploys Hosting and does not overwrite Auth providers.
+
+Firebase ID tokens **cannot** authorize Google Drive API calls. Sign-in also
+requests the Google OAuth `https://www.googleapis.com/auth/drive` scope. The
+Drive access token stays in process memory, is not serialized to application
+preferences, and is discarded on sign-out. On Web, Firebase restores the
+identity across reloads but **not** the Google Drive OAuth access token: press
+**Continue with Google** to reconnect Drive. An expired Drive access token
+shows a **Reconnect Google Drive** action; popups only open on a user gesture.
+Android can renew its Google authorization silently when possible.
+
+This Google Drive scope is restricted; Firebase Authentication does **not**
+remove Google's OAuth consent-screen verification or test-user requirements.
+Check Google Auth Platform if real-account consent is blocked. Real-account
+OAuth is not covered by demo/widget tests.
+
+Destructive file actions require confirmation; Drive items are trashed where
+supported.
 
 ### ADB hot reload
 

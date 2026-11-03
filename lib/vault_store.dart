@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 
 const folderMime = 'application/vnd.google-apps.folder';
@@ -123,12 +122,28 @@ class DemoStore implements VaultStore {
   }
 }
 
+/// A Firebase ID token authenticates the Firebase user, but cannot authorize
+/// Google Drive calls. Drive requests use a separate, short-lived Google OAuth
+/// access token, held in memory and never persisted by the application.
+class DriveAuthorizationExpired implements Exception {
+  const DriveAuthorizationExpired();
+
+  @override
+  String toString() => 'Google Drive access expired. Reconnect with Google.';
+}
+
 class GoogleDriveStore implements VaultStore {
-  GoogleDriveStore(this.account, {required this.signIn});
-  GoogleSignInAccount account;
-  final GoogleSignIn signIn;
-  Future<GoogleSignInAccount?>? _refreshInFlight;
-  final http.Client _client = http.Client();
+  GoogleDriveStore({
+    required this.accessToken,
+    this.onUnauthorized,
+    http.Client? client,
+  }) : _client = client ?? http.Client();
+
+  final Future<String?> Function() accessToken;
+  final Future<bool> Function()? onUnauthorized;
+  final http.Client _client;
+  Future<bool>? _renewInFlight;
+
   Future<http.Response> _call(
     String url, {
     String method = 'GET',
@@ -136,10 +151,9 @@ class GoogleDriveStore implements VaultStore {
     String? contentType,
   }) async {
     Future<http.Response> sendRequest() async {
-      final auth = await account.authentication;
-      final token = auth.accessToken;
-      if (token == null) {
-        throw StateError('Google Drive authorization expired. Sign in again.');
+      final token = await accessToken();
+      if (token == null || token.isEmpty) {
+        throw const DriveAuthorizationExpired();
       }
       final request = http.Request(method, Uri.parse(url));
       request.headers['Authorization'] = 'Bearer $token';
@@ -150,18 +164,19 @@ class GoogleDriveStore implements VaultStore {
 
     var response = await sendRequest();
     if (response.statusCode == 401) {
-      // Google access tokens have short lifetimes. Silent reauthentication must
-      // use the same sign-in instance, and concurrent requests share refresh.
-      final future = _refreshInFlight ??= signIn.signInSilently();
-      try {
-        final refreshed = await future;
-        if (refreshed == null) {
-          throw StateError('Google session expired. Sign in again.');
+      // A native Google session can renew Drive authorization silently. Web
+      // reauthorization requires a popup initiated by the user's own gesture.
+      final renew = onUnauthorized;
+      if (renew != null) {
+        final future = _renewInFlight ??= renew();
+        try {
+          if (await future) response = await sendRequest();
+        } finally {
+          if (identical(_renewInFlight, future)) _renewInFlight = null;
         }
-        account = refreshed;
-        response = await sendRequest();
-      } finally {
-        if (identical(_refreshInFlight, future)) _refreshInFlight = null;
+      }
+      if (response.statusCode == 401) {
+        throw const DriveAuthorizationExpired();
       }
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {

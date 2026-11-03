@@ -1,9 +1,13 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'document_view.dart';
+import 'firebase_options.dart';
 import 'folder_drawer.dart';
 import 'json_document.dart';
 import 'system_bars.dart';
@@ -16,6 +20,7 @@ export 'vault_store.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await configureSystemBars();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const SecretKeeps());
 }
 
@@ -85,27 +90,95 @@ abstract class VaultSession {
   Future<void> signOut();
 }
 
-class _GoogleVaultSession implements VaultSession {
-  final GoogleSignIn _google = GoogleSignIn(
+/// Firebase Authentication owns identity and session persistence. Google
+/// OAuth access tokens are separately required for Drive and remain in RAM.
+class _FirebaseVaultSession implements VaultSession {
+  FirebaseAuth get _auth => FirebaseAuth.instance;
+  late final GoogleSignIn _nativeGoogle = GoogleSignIn(
     scopes: [driveScope],
     serverClientId: googleWebClientId,
   );
 
+  GoogleSignInAccount? _nativeAccount;
+  String? _webDriveToken;
+
+  GoogleAuthProvider _driveProvider() =>
+      GoogleAuthProvider()..addScope(driveScope);
+
+  GoogleDriveStore _webStore() => GoogleDriveStore(
+    accessToken: () async => _webDriveToken,
+    // Firebase does not expose a Google OAuth refresh token. A new popup
+    // must start from an explicit user tap, not from a background API request.
+  );
+
+  GoogleDriveStore _nativeStore() => GoogleDriveStore(
+    accessToken: () async {
+      final account = _nativeAccount;
+      return account == null
+          ? null
+          : (await account.authentication).accessToken;
+    },
+    onUnauthorized: () async {
+      final account = await _nativeGoogle.signInSilently();
+      if (account == null) return false;
+      _nativeAccount = account;
+      return (await account.authentication).accessToken != null;
+    },
+  );
+
+  Future<VaultStore> _connectNative(GoogleSignInAccount account) async {
+    final credentials = await account.authentication;
+    if (credentials.idToken == null || credentials.accessToken == null) {
+      throw StateError('Google Drive authorization failed. Sign in again.');
+    }
+    // Also upgrades pre-Firebase native Google sessions on first restoration.
+    await _auth.signInWithCredential(
+      GoogleAuthProvider.credential(
+        idToken: credentials.idToken,
+        accessToken: credentials.accessToken,
+      ),
+    );
+    _nativeAccount = account;
+    return _nativeStore();
+  }
+
   @override
   Future<VaultStore?> restore() async {
-    final account = await _google.signInSilently();
-    return account == null ? null : GoogleDriveStore(account, signIn: _google);
+    // Wait until Firebase has restored its persisted identity before showing UI.
+    await _auth.authStateChanges().first;
+    if (kIsWeb) {
+      // Firebase restores identity but not Google Drive OAuth access tokens.
+      // A user-initiated popup is required to reconnect Drive after a reload.
+      return _webDriveToken == null ? null : _webStore();
+    }
+    final account = await _nativeGoogle.signInSilently();
+    return account == null ? null : _connectNative(account);
   }
 
   @override
   Future<VaultStore?> signIn() async {
-    final account = await _google.signIn();
-    return account == null ? null : GoogleDriveStore(account, signIn: _google);
+    if (kIsWeb) {
+      final result = await _auth.signInWithPopup(_driveProvider());
+      final accessToken = result.credential?.accessToken;
+      if (accessToken == null || accessToken.isEmpty) {
+        throw StateError('Google Drive permission was not granted.');
+      }
+      _webDriveToken = accessToken;
+      return _webStore();
+    }
+    final account = await _nativeGoogle.signIn();
+    return account == null ? null : _connectNative(account);
   }
 
   @override
   Future<void> signOut() async {
-    await _google.signOut();
+    _webDriveToken = null;
+    _nativeAccount = null;
+    try {
+      if (!kIsWeb) await _nativeGoogle.signOut();
+    } finally {
+      await _auth.signOut();
+    }
   }
 }
 
@@ -136,12 +209,13 @@ class _VaultScreenState extends State<VaultScreen> {
   String content = '';
   JsonDocument? activeDocument;
   bool busy = false, search = false;
+  bool _needsDriveReconnect = false;
   String query = '', error = '';
   final TextEditingController searchController = TextEditingController();
   @override
   void initState() {
     super.initState();
-    _session = widget.session ?? _GoogleVaultSession();
+    _session = widget.session ?? _FirebaseVaultSession();
     _restore();
   }
 
@@ -165,11 +239,17 @@ class _VaultScreenState extends State<VaultScreen> {
     setState(() {
       busy = true;
       error = '';
+      _needsDriveReconnect = false;
     });
     try {
       await operation();
     } catch (e) {
-      if (mounted) setState(() => error = e.toString());
+      if (mounted) {
+        setState(() {
+          error = e.toString();
+          _needsDriveReconnect = e is DriveAuthorizationExpired;
+        });
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -810,6 +890,11 @@ class _VaultScreenState extends State<VaultScreen> {
                 MaterialBanner(
                   content: SelectableText(error),
                   actions: [
+                    if (_needsDriveReconnect)
+                      TextButton(
+                        onPressed: _login,
+                        child: const Text('Reconnect Google Drive'),
+                      ),
                     TextButton(
                       onPressed: () => setState(() => error = ''),
                       child: const Text('Dismiss'),
