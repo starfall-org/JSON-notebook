@@ -1,17 +1,17 @@
 # Secrets Keep
 
-Flutter vault for hierarchical **JSON** data stored in Google Drive. Android and Web share the same source. The original Capacitor implementation is archived under `legacy_capacitor/` for reference.
+Secrets Keep stores hierarchical **JSON** data in Google Drive. **Android** uses Flutter; the production **Web** client is now native HTML/CSS/JavaScript under `web_dom/` (no CanvasKit or WebGL renderer). The original HTML/Capacitor client under `legacy_capacitor/` provided the DOM styling and Drive API foundation for the new Web interface. It is kept for reference.
 
 ## File behavior
 
 - `.json`: parsed as a native JSON object, with expandable nested sections and lists. Edit/add/delete keys or values, reorder entries, copy text, and save the resulting document to Drive. **Every leaf value is a string**; numbers, booleans and null are rejected rather than silently converted.
-- An **Add** button appears only for an empty key or a key containing child keys. Keys that already have a string or an array of values show **Edit** instead of Add. The Add/Edit dialog accepts zero or more Value fields: zero → `""`, one → a string, and two or more → an array of strings. Adding a child beneath an empty-string key turns it into a nested object; existing nonempty values are preserved. Each string or array element is displayed in its own value block with a dedicated Copy button; copying never changes the JSON document. The key title and its action toolbar are on the same horizontal line; Delete is inside the Edit dialog with an explicit confirmation, not on the key toolbar. The UI shows no type labels or array indices.
+- An **Add** button appears only for an empty key or a key containing child keys. Keys that already have a string or an array of values show **Edit** instead of Add. The Add/Edit dialog accepts zero or more Value fields: zero → `""`, one → a string, and two or more → an array of strings. Adding a child beneath an empty-string key turns it into a nested object; existing nonempty values are preserved. Each string or array element is displayed in its own value block with a dedicated Copy button; copying never changes the JSON document. The key title and action toolbar are on one line. Android keeps Delete inside Edit; the HTML Web version offers a Delete key action with an explicit confirmation. The UI shows no type labels or array indices.
 - `.md`: displayed as **raw source only**; the app does not render it as Markdown or use a Markdown block parser in the editor. Tap the file's `⋮` menu (or long-press its row) and choose **Convert to JSON**.
-- File/folder context menus use icon + text actions. JSON files and folders only offer **Rename**; Markdown files offer **Convert to JSON**, Rename and Delete to avoid accidentally deleting structured vault data.
+- HTML Web file menus offer **Rename**, **Move to trash**, and for Markdown files **Convert to JSON**. Every destructive operation requires confirmation. Android retains its existing file menu behavior.
 - JSON files are saved with **2-space indentation** and a final newline (`JsonEncoder.withIndent('  ')`). They are plain JSON, with no custom `format`, `version`, `blocks` or `sourceMarkdown` wrapper.
 - **JSON drag & drop:** long-press the grip at the left of a key, then drag to another key's header. Drop at the top or bottom of the header to insert before/after it, or in the middle to move inside a nested object or empty-string key. The complete subtree moves intact (including array values); existing values are never overwritten. Duplicate destination keys, cycles (moving into own descendants), and invalid target types are rejected. The source dims and valid destinations highlight while dragging. Dragging is disabled during Search and while a file save is underway. Up/down buttons remain as a non-drag ordering alternative.
 - **Search and Add are in the AppBar.** Search is collapsed by default. In a JSON document, Search matches nested keys and all string values (including array elements), case-insensitively and after trimming whitespace. Matching branches expand automatically, unrelated branches are hidden, and clearing Search restores the prior expand/collapse state. The document's Add button opens the root entry editor.
-- In file lists, the AppBar Add menu offers a new folder, Markdown file or JSON document. The More menu contains folder navigation, recursive Markdown conversion, theme and sign-out (when signed in). The file-level three-dot context menus remain available. At startup, Google restores the previous account in the background while a loading indicator is shown; the Login screen is not rendered until the restore finishes without an available session, or after an explicit sign-out. The same waiting state covers loading the Drive root and file list, and interactive sign-in.
+- In the HTML Web file list, the toolbar offers **Folder**, **JSON**, **MD** and recursive Markdown conversion; file-level three-dot menus remain available. Firebase restores only the user's identity across reloads, **not** the Drive OAuth access token: the user explicitly reconnects Drive using Google popup sign-in. Android keeps its existing AppBar and restoration flow.
 
 ## Markdown import rule
 
@@ -57,8 +57,11 @@ The Android UI respects system insets: the Material AppBar handles the top statu
 flutter pub get
 flutter analyze
 flutter test --concurrency=1
-flutter run -d chrome
-flutter build web --release
+# Flutter is still the Android app; build its APK via scripts/build-release.sh
+
+# HTML Web: no npm install / bundling required
+node --test web_dom/test.mjs
+firebase deploy --only hosting --project awesome-89e82
 ```
 
 ### Signed Android release
@@ -67,9 +70,9 @@ Place the local `release.jks` and `.env` with `KEYSTORE_PASSWORD`, `KEY_PASSWORD
 
 ### Firebase Authentication and Google Drive
 
-Secrets Keep uses Firebase Authentication with the Google provider. Web login uses
-`FirebaseAuth.signInWithPopup`, while Android signs in with Google Sign-In and
-passes its Google credential into `FirebaseAuth.signInWithCredential`.
+Secrets Keep uses Firebase Authentication with the Google provider. The HTML
+Web app uses Firebase JavaScript SDK `signInWithPopup`; Flutter Android uses
+Google Sign-In and passes its credential into `FirebaseAuth.signInWithCredential`.
 The Firebase project is `awesome-89e82`; its configured Firebase Web App is
 `secrets-keep-web`. Google Sign-In must remain enabled at
 [Firebase Authentication](https://console.firebase.google.com/project/awesome-89e82/authentication/providers),
@@ -107,4 +110,4 @@ The connected device must have an active Flutter debug session. Some remote ADB 
 
 ## Migration status
 
-The new UI operates on JSON directly; the legacy Markdown block editor and its `flutter_markdown` dependency have been removed. JSON CRUD and migration are tested with demo data. Google OAuth on a real account, large-vault performance and a complete Android real-device UX pass remain to be verified. Do not delete `legacy_capacitor/` before reviewing any content that the strict importer rejects.
+The Flutter Android and HTML Web clients operate on JSON directly. Web HTML modules render with native DOM nodes and include pure-model Node tests and a simulated browser demo test; Android keeps Flutter widget tests. Google OAuth on a real account, large-vault performance and a complete Android real-device UX pass remain to be verified. Keep `legacy_capacitor/` until archive review is complete.

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+    <meta name="theme-color" content="#f7f7f5">
+    <meta name="description" content="Secrets Keep — lightweight HTML JSON vault in Google Drive">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    <link rel="icon" type="image/png" href="/icons/icon-192.png">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <title>Secrets Keep</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <main id="app" aria-live="polite">
+      <div class="loading"><span class="spinner"></span><p>Loading Secrets Keep…</p></div>
+    </main>
+    <div id="notices" role="status" aria-live="polite"></div>
+    <script>
+      // Retire only the previous Flutter worker, never other workers on this origin.
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(regs => {
+          for (const reg of regs) {
+            const url = reg.active?.scriptURL || reg.waiting?.scriptURL || '';
+            if (url.includes('/flutter_service_worker.js')) reg.unregister();
+          }
+        }).catch(() => {});
+      }
+    </script>
+    <script type="module" src="/app.mjs"></script>
+  </body>
+</html>
