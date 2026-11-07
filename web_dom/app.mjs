@@ -1,4 +1,4 @@
-/** Lightweight Secrets Keep web app. DOM-only, no Flutter/CanvasKit.
+/** Lightweight JSON Notebook web app. DOM-only, no Flutter/CanvasKit.
  * HTML theme and Drive operations are adapted from legacy_capacitor.
  */
 import {savedIdentity,signInGoogle,signOutGoogle} from './auth.mjs';
@@ -24,15 +24,15 @@ function toast(text){
   setTimeout(()=>el.remove(),3200);
 }
 function setTheme(next){
-  const theme=next||localStorage.getItem('secrets-keep.theme')||'system';
-  localStorage.setItem('secrets-keep.theme',theme);
+  const theme=next||localStorage.getItem('json-notebook.theme')||'system';
+  localStorage.setItem('json-notebook.theme',theme);
   document.documentElement.dataset.theme=theme==='system'?
     (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):theme;
   document.querySelector('meta[name="theme-color"]').content=
     document.documentElement.dataset.theme==='dark'?'#090909':'#f7f7f5';
 }
 function cycleTheme(){
-  const current=localStorage.getItem('secrets-keep.theme')||'system';
+  const current=localStorage.getItem('json-notebook.theme')||'system';
   setTheme(current==='system'?'light':current==='light'?'dark':'system');
   render();
 }
@@ -61,7 +61,7 @@ async function run(work){
 }
 function mountHeader(shell){
   const top=h('header','topbar'),brand=h('div');
-  brand.append(h('div','brand','🔐 Secrets Keep'),h('div','brand-sub','HTML · Google Drive'));
+  brand.append(h('div','brand','🔐 JSON Notebook'),h('div','brand-sub','HTML · Google Drive'));
   top.append(brand,h('div','spacer'));
   if(state.store)top.append(button('↻ Refresh',()=>run(refresh),{small:true}));
   top.append(iconButton('◐','Change theme',cycleTheme));
@@ -273,7 +273,7 @@ function currentError(shell){
 function renderLogin(){
   app.replaceChildren();
   const outer=h('div','login-shell'),card=h('section','login-card');
-  card.append(h('div','login-icon','🔐'),h('h1','title','Secrets Keep'),
+  card.append(h('div','login-icon','🔐'),h('h1','title','JSON Notebook'),
     h('p','','Your JSON vault in Google Drive, rendered with native HTML. No canvas renderer.'));
   if(state.user&&!demoMode)card.append(h('p','subtle','Firebase session restored. Connect Google Drive to continue.'));
   if(state.error)card.append(errorBox(state.error));
@@ -388,7 +388,7 @@ async function initialize(){
   // The old Capacitor web client persisted Drive OAuth tokens unencrypted.
   // Remove that obsolete record; Firebase persists only its own identity.
   try{
-    localStorage.removeItem('secret-keep.google-session');
+    localStorage.removeItem('json-notebook.google-session');
     if(new URLSearchParams(location.hash.slice(1)).has('__sk_access_token')){
       history.replaceState(null,'',location.pathname+location.search);
     }

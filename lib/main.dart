@@ -21,16 +21,16 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await configureSystemBars();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  runApp(const SecretKeeps());
+  runApp(const JsonNotebookApp());
 }
 
-class SecretKeeps extends StatefulWidget {
-  const SecretKeeps({super.key});
+class JsonNotebookApp extends StatefulWidget {
+  const JsonNotebookApp({super.key});
   @override
-  State<SecretKeeps> createState() => _SecretKeepsState();
+  State<JsonNotebookApp> createState() => _JsonNotebookAppState();
 }
 
-class _SecretKeepsState extends State<SecretKeeps> {
+class _JsonNotebookAppState extends State<JsonNotebookApp> {
   ThemeMode themeMode = ThemeMode.system;
   @override
   void initState() {
@@ -55,7 +55,7 @@ class _SecretKeepsState extends State<SecretKeeps> {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'Secrets Keep',
+    title: 'JSON Notebook',
     debugShowCheckedModeBanner: false,
     builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
       value: navigationBarStyle(
@@ -790,7 +790,7 @@ class _VaultScreenState extends State<VaultScreen> {
                         RegExp(r'\.(?:md|json)$', caseSensitive: false),
                         '',
                       ) ??
-                      (path.isEmpty ? 'Secrets Keep' : path.last.name),
+                      (path.isEmpty ? 'JSON Notebook' : path.last.name),
                 ),
           leading: (current != null || path.length > 1)
               ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: _back)
@@ -921,7 +921,7 @@ class _VaultScreenState extends State<VaultScreen> {
                             ),
                             const SizedBox(height: 20),
                             Text(
-                              'Secrets Keep',
+                              'JSON Notebook',
                               style: Theme.of(context).textTheme.headlineMedium,
                             ),
                             const SizedBox(height: 18),

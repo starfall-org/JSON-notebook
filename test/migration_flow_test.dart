@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:secrets_keep/main.dart';
+import 'package:json_notebook/main.dart';
 
 import 'signed_out_test_session.dart';
 

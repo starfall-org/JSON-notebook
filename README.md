@@ -1,6 +1,28 @@
-# Secrets Keep
+# JSON Notebook
 
-Secrets Keep stores hierarchical **JSON** data in Google Drive. **Android** uses Flutter; the production **Web** client is now native HTML/CSS/JavaScript under `web_dom/` (no CanvasKit or WebGL renderer). The original HTML/Capacitor client under `legacy_capacitor/` provided the DOM styling and Drive API foundation for the new Web interface. It is kept for reference.
+JSON Notebook stores hierarchical **JSON** data in Google Drive. **Android** uses Flutter; the production **Web** client is now native HTML/CSS/JavaScript under `web_dom/` (no CanvasKit or WebGL renderer). The original HTML/Capacitor client under `legacy_capacitor/` provided the DOM styling and Drive API foundation for the new Web interface. It is kept for reference.
+
+## App identity and Android sign-in
+
+The app is branded **JSON Notebook**. Both Android implementations use
+`org.starfallorb.jsonnotebook` as their application ID, and the Flutter package
+is `json_notebook`.
+
+**Firebase/Google setup required for this new Android application ID:**
+register `org.starfallorb.jsonnotebook` in the existing Firebase project
+(`awesome-89e82`), register the relevant signing certificate fingerprints
+(SHA-1 and SHA-256), and configure a matching Android OAuth client.
+Update the Android Firebase app ID in `lib/firebase_options.dart` using the
+newly registered application's Firebase options. If building the archived
+Capacitor client, replace `legacy_capacitor/google-services.json` with the
+configuration downloaded for the new Android app, and sync it into the native
+Android project as needed. That checked-in JSON currently belongs to the
+**previous package registration** and cannot be reused or relabeled to provide
+working OAuth credentials for the new package.
+
+Android treats the renamed application as a **different installed app**:
+it does not upgrade the earlier package, and app-local sign-in/settings do not
+transfer automatically. JSON documents stored on Google Drive are unaffected.
 
 ## File behavior
 
@@ -70,11 +92,11 @@ Place the local `release.jks` and `.env` with `KEYSTORE_PASSWORD`, `KEY_PASSWORD
 
 ### Firebase Authentication and Google Drive
 
-Secrets Keep uses Firebase Authentication with the Google provider. The HTML
+JSON Notebook uses Firebase Authentication with the Google provider. The HTML
 Web app uses Firebase JavaScript SDK `signInWithPopup`; Flutter Android uses
 Google Sign-In and passes its credential into `FirebaseAuth.signInWithCredential`.
 The Firebase project is `awesome-89e82`; its configured Firebase Web App is
-`secrets-keep-web`. Google Sign-In must remain enabled at
+`json-notebook-web`. Google Sign-In must remain enabled at
 [Firebase Authentication](https://console.firebase.google.com/project/awesome-89e82/authentication/providers),
 and the Hosting domain `awesome-89e82.web.app` must be in Authorized domains.
 The shared Firebase Auth project is also used by other apps, so the local

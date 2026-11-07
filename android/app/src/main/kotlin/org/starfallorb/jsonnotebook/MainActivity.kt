@@ -1,4 +1,4 @@
-package org.starfallorb.secretskeep
+package org.starfallorb.jsonnotebook
 
 import io.flutter.embedding.android.FlutterActivity
 

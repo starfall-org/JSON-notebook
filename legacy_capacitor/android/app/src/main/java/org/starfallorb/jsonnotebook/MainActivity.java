@@ -1,4 +1,4 @@
-package org.starfallorb.secretskeep;
+package org.starfallorb.jsonnotebook;
 
 import android.content.Intent;
 import android.os.Bundle;

@@ -90,7 +90,7 @@ def locate_aot(abi: str) -> Path:
 def repair(apk: Path, abi: str, props: dict[str, str], build_tools: Path) -> None:
     aot = locate_aot(abi)
     temp_parent = Path('/dev/shm') if Path('/dev/shm').is_dir() else None
-    with tempfile.TemporaryDirectory(prefix='secrets-keep-apk-', dir=temp_parent) as d:
+    with tempfile.TemporaryDirectory(prefix='json-notebook-apk-', dir=temp_parent) as d:
         unsigned = Path(d) / 'unsigned.apk'
         aligned = Path(d) / 'aligned.apk'
         signed = Path(d) / 'signed.apk'

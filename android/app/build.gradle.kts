@@ -26,7 +26,7 @@ if (!releaseSigningReady && gradle.startParameter.taskNames.any {
 }
 
 android {
-    namespace = "org.starfallorb.secretskeep"
+    namespace = "org.starfallorb.jsonnotebook"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -37,7 +37,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "org.starfallorb.secretskeep"
+        applicationId = "org.starfallorb.jsonnotebook"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

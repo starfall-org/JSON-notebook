@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:secrets_keep/main.dart';
+import 'package:json_notebook/main.dart';
 
 class _FakeSession implements VaultSession {
   final restorePending = Completer<VaultStore?>();

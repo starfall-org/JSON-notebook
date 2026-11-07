@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:secrets_keep/system_bars.dart';
-import 'package:secrets_keep/main.dart';
+import 'package:json_notebook/system_bars.dart';
+import 'package:json_notebook/main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -74,7 +74,7 @@ void main() {
       // ThemeMode.light has index 1 and requires dark navigation icons;
       // ThemeMode.dark has index 2 and requires light navigation icons.
       SharedPreferences.setMockInitialValues({'theme': pair.$1});
-      await tester.pumpWidget(const SecretKeeps());
+      await tester.pumpWidget(const JsonNotebookApp());
       await tester.pump();
       final regions = find.byWidgetPredicate(
         (widget) =>

@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'json_document.dart';
 
-/// Importer for the legacy Secrets Keep Markdown hierarchy. Markdown is NOT
+/// Importer for the legacy JSON Notebook Markdown hierarchy. Markdown is NOT
 /// interpreted or rendered at runtime: it is only read during explicit import.
 /// Unsupported presentation markup is removed while keeping text content.
 /// Structural conflicts and malformed code fences still fail conversion.

@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
-  appId: "org.starfallorb.secretskeep",
-  appName: "Secrets Keep",
+  appId: "org.starfallorb.jsonnotebook",
+  appName: "JSON Notebook",
   webDir: "dist",
   server: {
     androidScheme: "https",

@@ -1,10 +1,10 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:secrets_keep/json_document.dart';
-import 'package:secrets_keep/markdown_to_json.dart';
-import 'package:secrets_keep/vault_migration.dart';
-import 'package:secrets_keep/vault_store.dart';
+import 'package:json_notebook/json_document.dart';
+import 'package:json_notebook/markdown_to_json.dart';
+import 'package:json_notebook/vault_migration.dart';
+import 'package:json_notebook/vault_store.dart';
 
 void main() {
   test(

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:secrets_keep/document_view.dart';
-import 'package:secrets_keep/json_document.dart';
+import 'package:json_notebook/document_view.dart';
+import 'package:json_notebook/json_document.dart';
 
 void main() {
   testWidgets(

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:secrets_keep/json_key_label.dart';
-import 'package:secrets_keep/document_view.dart';
-import 'package:secrets_keep/json_document.dart';
+import 'package:json_notebook/json_key_label.dart';
+import 'package:json_notebook/document_view.dart';
+import 'package:json_notebook/json_document.dart';
 
 List<TextSpan> _leafSpans(RichText text) {
   final leaves = <TextSpan>[];

@@ -12,7 +12,7 @@ import {
 } from "firebase/auth";
 import "./style.css";
 import type { NativeBridge } from "./native-bridge";
-const native = (window as Window & { secretsKeepNative?: NativeBridge }).secretsKeepNative;
+const native = (window as Window & { jsonNotebookNative?: NativeBridge }).jsonNotebookNative;
 type DriveEntry = {
   id: string;
   name: string;
@@ -82,22 +82,22 @@ googleProvider.setCustomParameters({
 });
 const demo = new URLSearchParams(location.search).has("demo");
 const fence = String.fromCharCode(96).repeat(3);
-const SESSION_KEY = "secret-keep.google-session";
-const OAUTH_RETURN_KEY = "secrets-keep.oauth-return";
-const OAUTH_AUTO_RECONNECT_KEY = "secrets-keep.oauth-auto-reconnect";
+const SESSION_KEY = "json-notebook.google-session";
+const OAUTH_RETURN_KEY = "json-notebook.oauth-return";
+const OAUTH_AUTO_RECONNECT_KEY = "json-notebook.oauth-auto-reconnect";
 const AUTH_BRIDGE_PARAM = "__auth_bridge";
 const AUTH_HANDOFF_TOKEN = "__sk_access_token";
-const OAUTH_BRIDGE_ATTEMPT_KEY = "secrets-keep.oauth-bridge-attempt";
+const OAUTH_BRIDGE_ATTEMPT_KEY = "json-notebook.oauth-bridge-attempt";
 const AUTH_HANDOFF_EXPIRES = "__sk_expires";
 const AUTH_HANDOFF_RETURN = "__sk_return";
 const AUTH_HANDOFF_ERROR = "__sk_auth_error";
 const APP_ORIGIN = "https://awesome-89e82.web.app";
 const AUTH_ORIGIN = "https://awesome-89e82.firebaseapp.com";
-const THEME_KEY = "secret-keep.theme";
-const FOLDER_CACHE_PREFIX = "secrets-keep.folder-cache.v1:";
-const FOLDER_VISIBLE_CACHE_PREFIX = "secrets-keep.folder-visible-cache.v1:";
+const THEME_KEY = "json-notebook.theme";
+const FOLDER_CACHE_PREFIX = "json-notebook.folder-cache.v1:";
+const FOLDER_VISIBLE_CACHE_PREFIX = "json-notebook.folder-visible-cache.v1:";
 const CACHE_REFRESH_MS = 30_000;
-const FILE_CACHE_PREFIX = "secrets-keep.file-cache.v1:";
+const FILE_CACHE_PREFIX = "json-notebook.file-cache.v1:";
 
 type ThemeMode = "system" | "light" | "dark";
 type StoredSession = {
@@ -857,7 +857,7 @@ function renderFolder() {
   const isRoot = currentFolder.id === rootFolderId;
   const canGoBack = !isRoot && Boolean(currentFolder.parents?.[0]);
   const theme = selectedTheme();
-  const folderTitle = isRoot ? "Secrets Keep" : currentFolder.name;
+  const folderTitle = isRoot ? "JSON Notebook" : currentFolder.name;
   const searchButton = '<button class="icon-btn ghost" id="search-toggle" type="button" title="Search" aria-label="Search" aria-expanded="' + String(searchOpen) + '">' + icons.search + '</button>';
 
   app.innerHTML =
@@ -2864,7 +2864,7 @@ function renderFile() {
   app.innerHTML =
     '<div class="doc-page">' +
       '<aside class="file-sidebar' + (sidebarOpen ? ' open' : '') + '">' +
-        '<div class="sidebar-title">Secrets Keep</div>' +
+        '<div class="sidebar-title">JSON Notebook</div>' +
         '<div class="sidebar-tree" id="sidebar-tree">' + sidebarTreeHtml(rootFolderId) + '</div>' +
       '</aside>' +
       '<button class="sidebar-backdrop' + (sidebarOpen ? ' show' : '') + '" type="button" aria-label="Close sidebar"></button>' +

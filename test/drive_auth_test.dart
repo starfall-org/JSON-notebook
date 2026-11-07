@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:secrets_keep/vault_store.dart';
+import 'package:json_notebook/vault_store.dart';
 
 void main() {
   test(

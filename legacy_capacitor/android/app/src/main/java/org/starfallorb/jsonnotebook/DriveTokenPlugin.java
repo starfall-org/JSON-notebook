@@ -1,4 +1,4 @@
-package org.starfallorb.secretskeep;
+package org.starfallorb.jsonnotebook;
 
 import android.accounts.Account;
 import android.content.Context;
@@ -22,7 +22,7 @@ import org.json.JSONObject;
 @CapacitorPlugin(name = "DriveToken")
 public class DriveTokenPlugin extends Plugin {
     private static final String DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
-    private static final String PREFS = "secrets_keep_drive_account";
+    private static final String PREFS = "json_notebook_drive_account";
     private static final String LEGACY_PREFS = "GOOGLE_LOGIN_F13oz0I_SHARED_PERF";
     private static final String LEGACY_DATA = "GOOGLE_LOGIN_GOOGLE_DATA_9158025e-947d-4211-ba51-40451630cc47";
 

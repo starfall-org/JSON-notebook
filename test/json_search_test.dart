@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:secrets_keep/json_search.dart';
+import 'package:json_notebook/json_search.dart';
 
 void main() {
   test('Searches nested keys and array string values case-insensitively', () {

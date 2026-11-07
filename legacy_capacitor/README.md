@@ -1,6 +1,6 @@
-# Secrets Keep
+# JSON Notebook
 
-Secrets Keep is a web-first Markdown editor backed by Google Drive. The same DOM UI runs directly in browsers and inside a thin Capacitor Android shell; there is no React Native or nested app WebView layer.
+JSON Notebook is a web-first Markdown editor backed by Google Drive. The same DOM UI runs directly in browsers and inside a thin Capacitor Android shell; there is no React Native or nested app WebView layer.
 
 ## Development
 
@@ -18,13 +18,13 @@ npm run build:android
 
 ## Android
 
-Package: `org.starfallorb.secretskeep`
+Package: `org.starfallorb.jsonnotebook`
 
 The Android project is tracked in `android/`. Capacitor provides the WebView shell, back-button handling, clipboard access, and app exit.
 
-Google authentication and Drive authorization use `@capgo/capacitor-social-login` in Google online mode. The plugin uses Android Credential Manager plus Google Play Services `AuthorizationClient`, persists the native Google session, exposes `refresh()` and `getAuthorizationCode()`, and returns the Drive access token to the existing app bridge. Secrets Keep keeps a short in-memory token cache so normal Drive requests do not revalidate Google auth on every API call. A Drive 401 forces the native refresh path.
+Google authentication and Drive authorization use `@capgo/capacitor-social-login` in Google online mode. The plugin uses Android Credential Manager plus Google Play Services `AuthorizationClient`, persists the native Google session, exposes `refresh()` and `getAuthorizationCode()`, and returns the Drive access token to the existing app bridge. JSON Notebook keeps a short in-memory token cache so normal Drive requests do not revalidate Google auth on every API call. A Drive 401 forces the native refresh path.
 
-Register an Android OAuth client for `org.starfallorb.secretskeep` with the signing certificate SHA-1. The web client ID used by the native plugin must belong to the same Google Cloud project.
+Register an Android OAuth client for `org.starfallorb.jsonnotebook` with the signing certificate SHA-1. The web client ID used by the native plugin must belong to the same Google Cloud project.
 
 The current Capacitor Android shell starts at versionCode 5; versionCode 4 belongs to the final Expo build.
 

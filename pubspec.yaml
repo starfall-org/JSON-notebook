@@ -1,4 +1,4 @@
-name: secrets_keep
+name: json_notebook
 description: Native Flutter JSON vault backed by Google Drive.
 publish_to: none
 version: 1.0.4+10

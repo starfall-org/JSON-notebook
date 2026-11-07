@@ -6,7 +6,7 @@ import type { NativeBridge } from "./native-bridge";
 
 declare global {
   interface Window {
-    secretsKeepNative?: NativeBridge;
+    jsonNotebookNative?: NativeBridge;
   }
 }
 
@@ -18,7 +18,7 @@ if (native) {
     import("./capacitor-auth"),
   ]);
 
-  window.secretsKeepNative = {
+  window.jsonNotebookNative = {
     auth: createNativeAuth(SocialLogin, Capacitor.getPlatform() === "android"
       ? registerPlugin<DriveTokenPlugin>("DriveToken") : undefined),
     copy: async text => {

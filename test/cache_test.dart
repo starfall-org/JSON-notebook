@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:secrets_keep/vault_store.dart';
-import 'package:secrets_keep/vault_naming.dart';
+import 'package:json_notebook/vault_store.dart';
+import 'package:json_notebook/vault_naming.dart';
 
 class _InstrumentedDemo implements VaultStore {
   final DemoStore source = DemoStore();

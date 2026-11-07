@@ -160,12 +160,12 @@ export function renderTree(container,document,ctx){
       handle.classList.add('drag-handle');
       handle.addEventListener('dragstart',e=>{
         if(needle){e.preventDefault();return;}
-        e.dataTransfer.setData('application/x-secrets-keep-json-key',JSON.stringify(keyPath));
+        e.dataTransfer.setData('application/x-json-notebook-json-key',JSON.stringify(keyPath));
         e.dataTransfer.effectAllowed='move';
       });
       actions.append(handle);row.append(actions);
       row.addEventListener('dragover',e=>{
-        if(needle||!e.dataTransfer.types.includes('application/x-secrets-keep-json-key'))return;
+        if(needle||!e.dataTransfer.types.includes('application/x-json-notebook-json-key'))return;
         e.preventDefault();node.classList.add('drag-over');
       });
       row.addEventListener('dragleave',()=>node.classList.remove('drag-over'));
@@ -173,7 +173,7 @@ export function renderTree(container,document,ctx){
         e.preventDefault();e.stopPropagation();node.classList.remove('drag-over');
         if(needle)return;
         try {
-          const source=JSON.parse(e.dataTransfer.getData('application/x-secrets-keep-json-key'));
+          const source=JSON.parse(e.dataTransfer.getData('application/x-json-notebook-json-key'));
           const rect=row.getBoundingClientRect(),fraction=(e.clientY-rect.top)/rect.height;
           const position=childable&&fraction>0.32&&fraction<0.68?'inside':fraction<0.5?'before':'after';
           ctx.move(source,keyPath,position);

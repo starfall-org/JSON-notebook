@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "org.starfallorb.secretskeep"
+    namespace = "org.starfallorb.jsonnotebook"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "org.starfallorb.secretskeep"
+        applicationId "org.starfallorb.jsonnotebook"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 5

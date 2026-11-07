@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:secrets_keep/json_document.dart';
+import 'package:json_notebook/json_document.dart';
 
 void main() {
   test('Reorder root keys both before and after without changing values', () {

@@ -28,7 +28,7 @@ fi
 
 intermediates='build/app/intermediates'
 original="build/app/intermediates.before-release.$$"
-ram_dir="/dev/shm/secrets-keep-release-$$"
+ram_dir="/dev/shm/json-notebook-release-$$"
 mkdir -p build/app "$ram_dir"
 if [[ -L "$intermediates" ]]; then
   echo 'Refusing to replace an existing intermediates symlink' >&2
