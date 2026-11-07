@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -36,23 +37,46 @@ class _ValueField {
 }
 
 class _Draft {
-  const _Draft(this.name, this.fields, {this.delete = false});
+  const _Draft(
+    this.name,
+    this.fields, {
+    this.delete = false,
+    this.addChild = false,
+  });
   final String name;
   final List<String> fields;
   final bool delete;
+  final bool addChild;
 }
 
 class JsonDocumentViewState extends State<JsonDocumentView> {
   bool busy = false;
   final Set<String> collapsed = {};
   String? draggingId;
+  String? hoverId;
+  JsonDropPosition? hoverPosition;
+  final _scrollController = ScrollController();
+  final _viewportKey = GlobalKey();
+  Timer? _scrollTimer;
+  Timer? _expandTimer;
+  Offset? _dragPointer;
+
+  @override
+  void dispose() {
+    _scrollTimer?.cancel();
+    _expandTimer?.cancel();
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   void didUpdateWidget(covariant JsonDocumentView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.documentId != widget.documentId) {
       collapsed.clear();
-      draggingId = null;
+      _finishDrag();
+    } else if (oldWidget.searchQuery != widget.searchQuery) {
+      _finishDrag();
     }
   }
 
@@ -155,6 +179,20 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
                     ),
                   ),
                 ],
+                if (!isNew &&
+                    (current is Map<String, dynamic> || current == ''))
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () => Navigator.pop(
+                        dialog,
+                        const _Draft('', [], addChild: true),
+                      ),
+                      icon: const Icon(Icons.create_new_folder_outlined),
+                      label: Text('Add to $name'),
+                    ),
+                  ),
+                if (name.contains('](http')) JsonKeyLabel(rawKey: name),
                 if (validation != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
@@ -244,7 +282,10 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
     final draft = await _editDialog(isNew: true, requireKey: true);
     if (draft == null) return;
     try {
-      await save(widget.document.addKey(path, draft.name, draft.fields));
+      final saved = await save(
+        widget.document.addKey(path, draft.name, draft.fields),
+      );
+      if (saved && mounted) setState(() => collapsed.remove(jsonEncode(path)));
     } catch (error) {
       showError(error);
     }
@@ -265,6 +306,10 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
       appendField: appendField,
     );
     if (draft == null) return;
+    if (draft.addChild) {
+      await add(path);
+      return;
+    }
     if (draft.delete) {
       await delete(path, name.isEmpty ? 'value' : name);
       return;
@@ -318,22 +363,84 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
     }
   }
 
-  Widget action(IconData icon, String tooltip, VoidCallback callback) =>
-      IconButton(
-        icon: Icon(icon, size: 18),
-        tooltip: tooltip,
-        onPressed: busy ? null : callback,
-        constraints: const BoxConstraints(minWidth: 30, minHeight: 32),
-        padding: const EdgeInsets.all(4),
-        visualDensity: VisualDensity.compact,
-      );
-
   bool get _dragEnabled => !busy && widget.searchQuery.trim().isEmpty;
 
   void _finishDrag() {
-    if (mounted && draggingId != null) {
-      setState(() => draggingId = null);
+    _scrollTimer?.cancel();
+    _expandTimer?.cancel();
+    _dragPointer = null;
+    if (mounted && (draggingId != null || hoverId != null)) {
+      setState(() {
+        draggingId = null;
+        hoverId = null;
+        hoverPosition = null;
+      });
     }
+  }
+
+  void _startDrag(String id) {
+    HapticFeedback.selectionClick();
+    setState(() => draggingId = id);
+    _scrollTimer?.cancel();
+    _scrollTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
+      if (!_dragEnabled || !_scrollController.hasClients) return;
+      final box = _viewportKey.currentContext?.findRenderObject();
+      final pointer = _dragPointer;
+      if (box is! RenderBox || pointer == null) return;
+      final y = box.globalToLocal(pointer).dy;
+      const edge = 72.0;
+      final speed = y < edge
+          ? -12 * ((edge - y) / edge).clamp(0.0, 1.0)
+          : y > box.size.height - edge
+          ? 12 * ((y - box.size.height + edge) / edge).clamp(0.0, 1.0)
+          : 0.0;
+      if (speed == 0) return;
+      final position = _scrollController.position;
+      _scrollController.jumpTo(
+        (position.pixels + speed).clamp(
+          position.minScrollExtent,
+          position.maxScrollExtent,
+        ),
+      );
+    });
+  }
+
+  void _hover(
+    _JsonKeyDrag source,
+    List<Object> path,
+    Object value,
+    Offset offset,
+    BuildContext? dropContext,
+  ) {
+    if (!_dragEnabled) return;
+    final id = jsonEncode(path);
+    final mode = _dropMode(value, offset, dropContext);
+    if (!widget.document.canMoveKey(source.path, path, mode)) {
+      _leaveTarget(id);
+      return;
+    }
+    if (hoverId == id && hoverPosition == mode) return;
+    _expandTimer?.cancel();
+    setState(() {
+      hoverId = id;
+      hoverPosition = mode;
+    });
+    if (mode == JsonDropPosition.inside && collapsed.contains(id)) {
+      _expandTimer = Timer(const Duration(milliseconds: 650), () {
+        if (mounted && hoverId == id && hoverPosition == mode) {
+          setState(() => collapsed.remove(id));
+        }
+      });
+    }
+  }
+
+  void _leaveTarget(String id) {
+    if (hoverId != id) return;
+    _expandTimer?.cancel();
+    setState(() {
+      hoverId = null;
+      hoverPosition = null;
+    });
   }
 
   JsonDropPosition _dropMode(
@@ -375,31 +482,27 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
     }
   }
 
-  Widget _dragHandle(
+  Widget _draggable(
     List<Object> path,
     String label,
     String id,
-    ColorScheme color,
-  ) {
-    return LongPressDraggable<_JsonKeyDrag>(
-      dragAnchorStrategy: pointerDragAnchorStrategy,
-      data: _JsonKeyDrag(path),
-      maxSimultaneousDrags: _dragEnabled ? 1 : 0,
-      onDragStarted: () => setState(() => draggingId = id),
-      onDragEnd: (_) => _finishDrag(),
-      feedback: Material(
-        color: color.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(9),
-        elevation: 5,
+    Widget child, {
+    bool immediate = false,
+  }) {
+    final color = Theme.of(context).colorScheme;
+    final feedback = Material(
+      color: color.primaryContainer,
+      borderRadius: BorderRadius.circular(10),
+      elevation: 6,
+      child: SizedBox(
+        width: 230,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.all(14),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.drag_indicator, size: 20),
-              const SizedBox(width: 6),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 180),
+              const Icon(Icons.drag_indicator, size: 22),
+              const SizedBox(width: 8),
+              Expanded(
                 child: Text(
                   label,
                   maxLines: 1,
@@ -410,17 +513,120 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
           ),
         ),
       ),
-      childWhenDragging: const SizedBox(width: 29, height: 32),
-      child: Semantics(
-        label: 'Drag $label',
-        child: Padding(
-          padding: const EdgeInsets.all(5),
-          child: Icon(
-            Icons.drag_indicator,
-            size: 19,
-            color: color.onSurfaceVariant,
+    );
+    if (immediate) {
+      return Draggable<_JsonKeyDrag>(
+        data: _JsonKeyDrag(path),
+        dragAnchorStrategy: pointerDragAnchorStrategy,
+        maxSimultaneousDrags: _dragEnabled && draggingId == null ? 1 : 0,
+        feedback: feedback,
+        onDragStarted: () => _startDrag(id),
+        onDragEnd: (_) => _finishDrag(),
+        onDragCompleted: _finishDrag,
+        onDraggableCanceled: (_, _) => _finishDrag(),
+        child: child,
+      );
+    }
+    return LongPressDraggable<_JsonKeyDrag>(
+      data: _JsonKeyDrag(path),
+      delay: const Duration(milliseconds: 300),
+      hapticFeedbackOnStart: false,
+      dragAnchorStrategy: pointerDragAnchorStrategy,
+      maxSimultaneousDrags: _dragEnabled && draggingId == null ? 1 : 0,
+      feedback: feedback,
+      onDragStarted: () => _startDrag(id),
+      onDragEnd: (_) => _finishDrag(),
+      onDragCompleted: _finishDrag,
+      onDraggableCanceled: (_, _) => _finishDrag(),
+      child: child,
+    );
+  }
+
+  String _copyText(Object value) => value is String
+      ? value
+      : const JsonEncoder.withIndent('  ').convert(value);
+
+  Future<void> _copy(Object value) async {
+    await Clipboard.setData(ClipboardData(text: _copyText(value)));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Copied to clipboard')));
+  }
+
+  Future<void> _showEntry(
+    List<Object> path,
+    String label,
+    Object value,
+    int index,
+    int count,
+  ) async {
+    final color = Theme.of(context).colorScheme;
+    await showDialog<void>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: SelectableText(label),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
+        scrollable: true,
+        content: SizedBox(
+          width: 440,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (label.contains('](http')) JsonKeyLabel(rawKey: label),
+              _values(path, value, color.surfaceContainerHighest),
+              if (count > 1)
+                Row(
+                  children: [
+                    IconButton(
+                      tooltip: 'Move $label up',
+                      icon: const Icon(Icons.arrow_upward),
+                      onPressed: index == 0 || !_dragEnabled
+                          ? null
+                          : () {
+                              Navigator.pop(dialog);
+                              reorder(
+                                path.sublist(0, path.length - 1),
+                                index,
+                                -1,
+                              );
+                            },
+                    ),
+                    IconButton(
+                      tooltip: 'Move $label down',
+                      icon: const Icon(Icons.arrow_downward),
+                      onPressed: index + 1 == count || !_dragEnabled
+                          ? null
+                          : () {
+                              Navigator.pop(dialog);
+                              reorder(
+                                path.sublist(0, path.length - 1),
+                                index,
+                                1,
+                              );
+                            },
+                    ),
+                  ],
+                ),
+            ],
           ),
         ),
+        actions: [
+          TextButton(onPressed: () => _copy(value), child: const Text('Copy')),
+          TextButton(
+            onPressed: busy
+                ? null
+                : () {
+                    Navigator.pop(dialog);
+                    edit(path, label, value);
+                  },
+            child: const Text('Edit'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialog),
+            child: const Text('Close'),
+          ),
+        ],
       ),
     );
   }
@@ -429,7 +635,7 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
     final strings = value is List
         ? value.cast<String>()
         : <String>[value as String];
-    if (strings.isEmpty) return const SizedBox.shrink();
+    if (strings.isEmpty) return const SelectableText('[]');
     return Padding(
       padding: const EdgeInsets.only(top: 4),
       child: Column(
@@ -471,15 +677,7 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
                         minWidth: 36,
                         minHeight: 36,
                       ),
-                      onPressed: () async {
-                        await Clipboard.setData(
-                          ClipboardData(text: strings[index]),
-                        );
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Copied to clipboard')),
-                        );
-                      },
+                      onPressed: () => _copy(strings[index]),
                     ),
                   ],
                 ),
@@ -500,10 +698,10 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
   }) {
     final color = Theme.of(context).colorScheme;
     final isObject = value is Map<String, dynamic>;
+    final isBranch = isObject || value == '';
     final id = jsonEncode(path);
     final needle = JsonSearch.normalize(widget.searchQuery);
     final expanded = needle.isNotEmpty || !collapsed.contains(id);
-    final parent = path.sublist(0, path.length - 1);
     final selfMatches =
         needle.isNotEmpty && JsonSearch.keyMatches(label, needle);
     final includeAll = showAllChildren || selfMatches;
@@ -516,137 +714,231 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
               )
               .toList()
         : null;
+    void toggleBranch() => setState(() {
+      if (!collapsed.remove(id)) {
+        collapsed.add(id);
+      }
+    });
     BuildContext? dropContext;
-    return Card(
+    final active = hoverId == id;
+    final displayLabel = label.replaceAllMapped(
+      RegExp(r'\[([^\]]+)\]\((https?://[^\s)]+)\)'),
+      (match) => match.group(1)!,
+    );
+    return Column(
       key: ValueKey('json-$id'),
-      elevation: 0,
-      color: color.surface,
-      margin: const EdgeInsets.symmetric(vertical: 2),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(color: color.outlineVariant),
-      ),
-      child: AnimatedOpacity(
-        opacity: draggingId == id ? 0.12 : 1,
-        duration: const Duration(milliseconds: 100),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Only the header is a drop target: descendants retain independent
-              // targets without parent hit boxes swallowing nested drags.
-              DragTarget<_JsonKeyDrag>(
-                key: ValueKey('json-drop-$id'),
-                onWillAcceptWithDetails: (details) {
-                  if (!_dragEnabled) return false;
-                  return [
-                    JsonDropPosition.before,
-                    JsonDropPosition.after,
-                    if (isObject || value is String && value.isEmpty)
-                      JsonDropPosition.inside,
-                  ].any(
-                    (mode) => widget.document.canMoveKey(
-                      details.data.path,
-                      path,
-                      mode,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        DragTarget<_JsonKeyDrag>(
+          key: ValueKey('json-drop-$id'),
+          onWillAcceptWithDetails: (details) {
+            if (!_dragEnabled) return false;
+            final allowed =
+                [
+                  JsonDropPosition.before,
+                  JsonDropPosition.after,
+                  if (isObject || value == '') JsonDropPosition.inside,
+                ].any(
+                  (mode) =>
+                      widget.document.canMoveKey(details.data.path, path, mode),
+                );
+            if (allowed) {
+              _hover(details.data, path, value, details.offset, dropContext);
+            }
+            return allowed;
+          },
+          onMove: (details) =>
+              _hover(details.data, path, value, details.offset, dropContext),
+          onLeave: (_) => _leaveTarget(id),
+          onAcceptWithDetails: (details) {
+            final mode = _dropMode(value, details.offset, dropContext);
+            if (widget.document.canMoveKey(details.data.path, path, mode)) {
+              _dropKey(details.data, path, mode);
+            }
+            _leaveTarget(id);
+          },
+          builder: (context, candidates, rejected) => Builder(
+            builder: (headerContext) {
+              dropContext = headerContext;
+              return _draggable(
+                path,
+                displayLabel,
+                id,
+                AnimatedOpacity(
+                  opacity: draggingId == id ? 0.3 : 1,
+                  duration: const Duration(milliseconds: 100),
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(vertical: 3),
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    decoration: BoxDecoration(
+                      color: active && hoverPosition == JsonDropPosition.inside
+                          ? color.primaryContainer
+                          : color.surface,
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                  );
-                },
-                onAcceptWithDetails: (details) {
-                  final mode = _dropMode(value, details.offset, dropContext);
-                  _dropKey(details.data, path, mode);
-                },
-                builder: (context, candidates, rejected) => Builder(
-                  builder: (headerContext) {
-                    dropContext = headerContext;
-                    return AnimatedContainer(
-                      duration: const Duration(milliseconds: 100),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(6),
-                        color: candidates.isEmpty
-                            ? Colors.transparent
-                            : color.primaryContainer,
-                        border: Border.all(
-                          color: candidates.isEmpty
-                              ? Colors.transparent
-                              : color.primary,
+                    foregroundDecoration: BoxDecoration(
+                      border: Border(
+                        top: BorderSide(
+                          width: 3,
+                          color:
+                              active && hoverPosition == JsonDropPosition.before
+                              ? color.primary
+                              : Colors.transparent,
+                        ),
+                        bottom: BorderSide(
+                          width: 3,
+                          color:
+                              active && hoverPosition == JsonDropPosition.after
+                              ? color.primary
+                              : Colors.transparent,
                         ),
                       ),
-                      child: Row(
-                        children: [
-                          _dragHandle(path, label, id, color),
-                          if (isObject)
-                            action(
-                              expanded
-                                  ? Icons.expand_more
-                                  : Icons.chevron_right,
-                              'Toggle $label',
-                              () => setState(() {
-                                if (!collapsed.remove(id)) collapsed.add(id);
-                              }),
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: busy || draggingId != null
+                            ? null
+                            : isBranch
+                            ? toggleBranch
+                            : () =>
+                                  _showEntry(path, label, value, index, count),
+                        child: Row(
+                          children: [
+                            _draggable(
+                              path,
+                              displayLabel,
+                              id,
+                              Semantics(
+                                label: 'Drag $displayLabel',
+                                child: Tooltip(
+                                  message: 'Drag to move',
+                                  child: SizedBox(
+                                    width: 44,
+                                    height: 52,
+                                    child: Icon(
+                                      Icons.drag_indicator,
+                                      size: 22,
+                                      color: _dragEnabled
+                                          ? color.onSurfaceVariant
+                                          : color.outlineVariant,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              immediate: true,
                             ),
-                          Expanded(
-                            child: JsonKeyLabel(
-                              rawKey: label,
-                              style: Theme.of(context).textTheme.titleSmall,
+                            if (isBranch)
+                              IconButton(
+                                icon: Icon(
+                                  expanded
+                                      ? Icons.expand_more
+                                      : Icons.chevron_right,
+                                ),
+                                tooltip: 'Toggle $label',
+                                onPressed: busy || draggingId != null
+                                    ? null
+                                    : toggleBranch,
+                                constraints: const BoxConstraints(
+                                  minWidth: 40,
+                                  minHeight: 48,
+                                ),
+                                padding: EdgeInsets.zero,
+                              )
+                            else
+                              const SizedBox(width: 40),
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                                child: Text(
+                                  displayLabel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.titleSmall,
+                                ),
+                              ),
                             ),
-                          ),
-                          if (index > 0)
-                            action(
-                              Icons.arrow_upward,
-                              'Move $label up',
-                              () => reorder(parent, index, -1),
+                            if (active &&
+                                hoverPosition == JsonDropPosition.inside)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 4),
+                                child: Icon(
+                                  Icons.subdirectory_arrow_right,
+                                  color: color.primary,
+                                  size: 20,
+                                ),
+                              ),
+                            PopupMenuButton<String>(
+                              tooltip: 'Options for $label',
+                              enabled: !busy && draggingId == null,
+                              icon: const Icon(Icons.more_vert),
+                              onSelected: (action) {
+                                switch (action) {
+                                  case 'copy':
+                                    _copy(value);
+                                  case 'edit':
+                                    edit(path, label, value);
+                                  case 'delete':
+                                    delete(path, label);
+                                }
+                              },
+                              itemBuilder: (_) => const [
+                                PopupMenuItem(
+                                  value: 'copy',
+                                  child: Text('Copy'),
+                                ),
+                                PopupMenuItem(
+                                  value: 'edit',
+                                  child: Text('Edit'),
+                                ),
+                                PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text('Delete'),
+                                ),
+                              ],
                             ),
-                          if (index + 1 < count)
-                            action(
-                              Icons.arrow_downward,
-                              'Move $label down',
-                              () => reorder(parent, index, 1),
-                            ),
-                          if (isObject || (value is String && value.isEmpty))
-                            action(Icons.add, 'Add to $label', () => add(path)),
-                          action(
-                            Icons.edit_outlined,
-                            'Edit $label',
-                            () => edit(path, label, value),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-              if (!isObject)
-                _values(path, value, color.surfaceContainerHighest),
-              if (isObject && expanded)
-                Padding(
-                  padding: const EdgeInsets.only(left: 1),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (children != null)
-                        for (var i = 0; i < children.length; i++)
-                          entry(
-                            [...path, children[i].key],
-                            children[i].key,
-                            children[i].value,
-                            i,
-                            children.length,
-                            showAllChildren: includeAll,
-                          ),
-                      if (children?.isEmpty ?? false)
-                        const Padding(
-                          padding: EdgeInsets.all(8),
-                          child: Text('Empty'),
+                          ],
                         ),
-                    ],
+                      ),
+                    ),
                   ),
                 ),
-            ],
+              );
+            },
           ),
         ),
-      ),
+        if (isBranch && expanded)
+          Padding(
+            padding: const EdgeInsets.only(left: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (children == null || children.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(84, 4, 12, 12),
+                    child: Text(
+                      'No child entries',
+                      style: Theme.of(context).textTheme.bodySmall
+                          ?.copyWith(color: color.onSurfaceVariant),
+                    ),
+                  ),
+                if (children != null)
+                  for (var i = 0; i < children.length; i++)
+                    entry(
+                      [...path, children[i].key],
+                      children[i].key,
+                      children[i].value,
+                      i,
+                      children.length,
+                      showAllChildren: includeAll,
+                    ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 
@@ -657,31 +949,36 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
     final matches = all
         .where((item) => JsonSearch.matches(item.key, item.value, needle))
         .toList();
-    return Column(
-      children: [
-        if (busy) const LinearProgressIndicator(),
-        Expanded(
-          child: matches.isEmpty && needle.isNotEmpty
-              ? const Center(child: Text('No matching entries'))
-              : ListView(
-                  key: ValueKey('json-results-$needle'),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
+    return Listener(
+      onPointerMove: (event) => _dragPointer = event.position,
+      child: Column(
+        children: [
+          if (busy) const LinearProgressIndicator(),
+          Expanded(
+            key: _viewportKey,
+            child: matches.isEmpty && needle.isNotEmpty
+                ? const Center(child: Text('No matching entries'))
+                : ListView(
+                    key: ValueKey('json-results-$needle'),
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    children: [
+                      for (final item in matches)
+                        entry(
+                          [item.key],
+                          item.key,
+                          item.value,
+                          all.indexWhere((e) => e.key == item.key),
+                          all.length,
+                        ),
+                    ],
                   ),
-                  children: [
-                    for (final item in matches)
-                      entry(
-                        [item.key],
-                        item.key,
-                        item.value,
-                        all.indexWhere((e) => e.key == item.key),
-                        all.length,
-                      ),
-                  ],
-                ),
-        ),
-      ],
+          ),
+        ],
+      ),
     );
   }
 }

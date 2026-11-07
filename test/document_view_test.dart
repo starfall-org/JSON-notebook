@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:json_notebook/document_view.dart';
 import 'package:json_notebook/json_document.dart';
 
+import 'entry_test_actions.dart';
+
 void main() {
   testWidgets('Search reveals nested matching keys and values, not siblings', (
     tester,
@@ -36,7 +38,11 @@ void main() {
     expect(find.text('Alpha'), findsOneWidget);
     expect(find.text('Child'), findsOneWidget);
     expect(find.text('Token'), findsOneWidget);
+    expect(find.text('SECRET-ONE'), findsNothing);
+    await openEntry(tester, '["Alpha","Child","Token"]');
     expect(find.text('SECRET-ONE'), findsOneWidget);
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
     expect(find.text('Ignore'), findsNothing);
     expect(find.text('Beta'), findsNothing);
     query.value = 'token';
@@ -96,35 +102,44 @@ void main() {
       expect(rectangles.last.width, greaterThan(240));
       final key = tester.getRect(find.text('G'));
       expect(find.byTooltip('Add to G'), findsNothing);
-      final edit = tester.getRect(find.byTooltip('Edit G'));
+      final edit = tester.getRect(find.byTooltip('Options for G'));
       expect((key.center.dy - edit.center.dy).abs(), lessThan(10));
       expect(tester.takeException(), isNull);
     },
   );
 
-  testWidgets('Values have individual copy buttons but no array index labels', (
-    tester,
-  ) async {
-    final doc = JsonDocument.parse('{"A":"value","B":{"C":{"D":["e","f"]}}}');
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: JsonDocumentView(document: doc, onSave: (_) async => true),
+  testWidgets(
+    'Compact rows open full values in a dialog with individual copy buttons',
+    (tester) async {
+      final doc = JsonDocument.parse('{"A":"value","B":{"C":{"D":["e","f"]}}}');
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: JsonDocumentView(document: doc, onSave: (_) async => true),
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    final outer = find.byKey(const ValueKey('json-["B"]'));
-    expect(find.ancestor(of: find.text('C'), matching: outer), findsOneWidget);
-    expect(find.ancestor(of: find.text('D'), matching: outer), findsOneWidget);
-    expect(find.ancestor(of: find.text('e'), matching: outer), findsOneWidget);
-    expect(find.byTooltip('Add to D'), findsNothing);
-    expect(find.byTooltip('Edit D'), findsOneWidget);
-    expect(find.text('[1]'), findsNothing);
-    expect(find.text('[2]'), findsNothing);
-    expect(find.byTooltip('Copy value'), findsNWidgets(3));
-    expect(find.byType(PopupMenuButton), findsNothing);
-  });
+      );
+      await tester.pumpAndSettle();
+      final outer = find.byKey(const ValueKey('json-["B"]'));
+      expect(
+        find.ancestor(of: find.text('C'), matching: outer),
+        findsOneWidget,
+      );
+      expect(
+        find.ancestor(of: find.text('D'), matching: outer),
+        findsOneWidget,
+      );
+      expect(find.text('e'), findsNothing);
+      expect(find.byTooltip('Add to D'), findsNothing);
+      expect(find.byTooltip('Options for D'), findsOneWidget);
+      expect(find.text('[1]'), findsNothing);
+      expect(find.text('[2]'), findsNothing);
+      expect(find.byTooltip('Copy value'), findsNothing);
+      expect(find.byType(PopupMenuButton<String>), findsNWidgets(4));
+      await openEntry(tester, '["B","C","D"]');
+      expect(find.byTooltip('Copy value'), findsNWidgets(2));
+    },
+  );
 
   testWidgets(
     'No value fields creates an empty string; one field creates string',
@@ -155,7 +170,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(doc.at(['A']), '');
 
-      await tester.tap(find.byTooltip('Edit A'));
+      await entryAction(tester, 'A', 'Edit');
       await tester.pumpAndSettle();
       await tester.tap(find.text('Add value'));
       await tester.pumpAndSettle();
@@ -205,7 +220,7 @@ void main() {
       expect(doc.at(['D']), ['e', 'f']);
       expect(find.text('[1]'), findsNothing);
 
-      await tester.tap(find.byTooltip('Edit D'));
+      await entryAction(tester, 'D', 'Edit');
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Remove value field').last);
       await tester.pumpAndSettle();
@@ -229,14 +244,21 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.byTooltip('Add to Empty'), findsOneWidget);
-    expect(find.byTooltip('Add to Group'), findsOneWidget);
+    expect(find.text('Add to Empty'), findsNothing);
+    await entryAction(tester, 'Empty', 'Edit');
+    expect(find.text('Add to Empty'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    await entryAction(tester, 'Group', 'Edit');
+    expect(find.text('Add to Group'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
     expect(find.byTooltip('Add to Filled'), findsNothing);
     expect(find.byTooltip('Add to List'), findsNothing);
     expect(find.byTooltip('Add to Child'), findsNothing);
-    expect(find.byTooltip('Edit Filled'), findsOneWidget);
-    expect(find.byTooltip('Edit List'), findsOneWidget);
-    expect(find.byTooltip('Edit Child'), findsOneWidget);
+    expect(find.byTooltip('Options for Filled'), findsOneWidget);
+    expect(find.byTooltip('Options for List'), findsOneWidget);
+    expect(find.byTooltip('Options for Child'), findsOneWidget);
   });
 
   testWidgets('The single Add promotes empty string to nested key', (
@@ -268,7 +290,8 @@ void main() {
     );
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Add to Parent'));
+    await entryAction(tester, 'Parent', 'Edit');
+    await tester.tap(find.text('Add to Parent'));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const ValueKey('json-key-input')),
@@ -279,7 +302,8 @@ void main() {
     expect(doc.data, {
       'Parent': {'Child': ''},
     });
-    expect(find.byTooltip('Add to Parent'), findsOneWidget);
+    await entryAction(tester, 'Parent', 'Edit');
+    expect(find.text('Add to Parent'), findsOneWidget);
     expect(find.byTooltip('Add section to Parent'), findsNothing);
     expect(find.byTooltip('Add list to Parent'), findsNothing);
   });
@@ -298,7 +322,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Edit A'));
+    await entryAction(tester, 'A', 'Edit');
     await tester.pumpAndSettle();
     final deleteRect = tester.getRect(find.text('Delete'));
     final cancelRect = tester.getRect(find.text('Cancel'));
@@ -335,7 +359,7 @@ void main() {
 
     expect(find.byTooltip('Delete A'), findsNothing);
     expect(find.byTooltip('Delete B'), findsNothing);
-    await tester.tap(find.byTooltip('Edit A'));
+    await entryAction(tester, 'A', 'Edit');
     await tester.pumpAndSettle();
     expect(find.text('Delete'), findsOneWidget);
     await tester.tap(find.text('Delete'));
@@ -346,7 +370,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(doc.at(['A']), 'value');
 
-    await tester.tap(find.byTooltip('Edit A'));
+    await entryAction(tester, 'A', 'Edit');
     await tester.pumpAndSettle();
     await tester.tap(find.text('Delete'));
     await tester.pumpAndSettle();
@@ -380,7 +404,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Edit B'));
+    await entryAction(tester, 'B', 'Edit');
     await tester.pumpAndSettle();
     await tester.tap(find.text('Delete'));
     await tester.pumpAndSettle();
@@ -431,7 +455,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byTooltip('Add to D'), findsNothing);
-      await tester.tap(find.byTooltip('Edit D'));
+      await entryAction(tester, 'D', 'Edit');
       await tester.pumpAndSettle();
       await tester.tap(find.text('Add value'));
       await tester.pumpAndSettle();
@@ -441,6 +465,8 @@ void main() {
       expect(doc.data, {
         'D': ['e', 'f'],
       });
+      expect(find.byTooltip('Copy value'), findsNothing);
+      await openEntry(tester, '["D"]');
       expect(find.byTooltip('Copy value'), findsNWidgets(2));
     },
   );

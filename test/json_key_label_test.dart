@@ -5,6 +5,8 @@ import 'package:json_notebook/json_key_label.dart';
 import 'package:json_notebook/document_view.dart';
 import 'package:json_notebook/json_document.dart';
 
+import 'entry_test_actions.dart';
+
 List<TextSpan> _leafSpans(RichText text) {
   final leaves = <TextSpan>[];
   void visit(InlineSpan part) {
@@ -138,10 +140,11 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(find.text('Docs'), findsOneWidget);
+    await entryAction(tester, '[Docs](https://example.com)', 'Edit');
     final label = tester.widget<JsonKeyLabel>(find.byType(JsonKeyLabel).first);
     expect(label.rawKey, '[Docs](https://example.com)');
-    await tester.tap(find.byTooltip('Edit [Docs](https://example.com)'));
-    await tester.pumpAndSettle();
+
     expect(find.byKey(const ValueKey('json-key-input')), findsOneWidget);
     final input = tester.widget<TextFormField>(
       find.byKey(const ValueKey('json-key-input')),

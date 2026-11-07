@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:json_notebook/document_view.dart';
 import 'package:json_notebook/json_document.dart';
 
+import 'entry_test_actions.dart';
+
 void main() {
   testWidgets(
     'Each array element has its own visually separate copyable block',
@@ -19,6 +21,9 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+
+      expect(find.text('first'), findsNothing);
+      await openEntry(tester, '["Entries"]');
 
       final blocks = [
         for (var i = 0; i < 3; i++)
@@ -103,11 +108,17 @@ void main() {
         await tester.pump();
       }
 
+      await openEntry(tester, '["Entries"]');
       await copyFrom('["Entries",2]');
       await copyFrom('["Entries",1]');
       await copyFrom('["Entries",0]');
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      await openEntry(tester, '["Scalar"]');
       await copyFrom('["Scalar",0]');
-      await copyFrom('["Empty",0]');
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      await entryAction(tester, 'Empty', 'Copy');
       expect(copied, ['third', 'line one\nline two', 'first', 'alone', '']);
       expect(doc.toJson(), original);
       expect(tester.takeException(), isNull);
@@ -130,6 +141,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await openEntry(tester, '["Outer","Tokens"]');
     final block = find.byKey(
       const ValueKey('json-value-block-["Outer","Tokens",1]'),
     );

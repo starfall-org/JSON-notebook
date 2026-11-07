@@ -92,7 +92,7 @@ void main() {
         'Data': ['one', 'two'],
       },
     });
-    expect(find.byTooltip('Add to Empty'), findsOneWidget);
+    expect(find.byTooltip('Toggle Empty'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

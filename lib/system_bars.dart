@@ -16,14 +16,17 @@ Brightness navigationBrightness(ThemeMode mode, Brightness platform) =>
       ThemeMode.system => platform,
     };
 
-/// Android 10+ can otherwise add a dark contrast scrim to transparent 3-button
-/// navigation. Use theme-appropriate icons rather than a scrim for contrast.
-SystemUiOverlayStyle navigationBarStyle(Brightness brightness) =>
-    SystemUiOverlayStyle(
-      systemNavigationBarColor: Colors.transparent,
-      systemNavigationBarDividerColor: Colors.transparent,
-      systemNavigationBarContrastEnforced: false,
-      systemNavigationBarIconBrightness: brightness == Brightness.dark
-          ? Brightness.light
-          : Brightness.dark,
-    );
+/// Use the app background on Android versions that honor navigation bar colors.
+/// Edge-to-edge Android uses the matching Flutter background behind the bar.
+/// Disable the system contrast scrim and choose contrasting button/gesture icons.
+SystemUiOverlayStyle navigationBarStyle(
+  Brightness brightness, {
+  required Color backgroundColor,
+}) => SystemUiOverlayStyle(
+  systemNavigationBarColor: backgroundColor,
+  systemNavigationBarDividerColor: backgroundColor,
+  systemNavigationBarContrastEnforced: false,
+  systemNavigationBarIconBrightness: brightness == Brightness.dark
+      ? Brightness.light
+      : Brightness.dark,
+);

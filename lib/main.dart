@@ -54,32 +54,43 @@ class _JsonNotebookAppState extends State<JsonNotebookApp> {
   }
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: 'JSON Notebook',
-    debugShowCheckedModeBanner: false,
-    builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
-      value: navigationBarStyle(
-        navigationBrightness(
-          themeMode,
-          MediaQuery.platformBrightnessOf(context),
-        ),
-      ),
-      child: child ?? const SizedBox.shrink(),
-    ),
-    themeMode: themeMode,
-    theme: ThemeData(
+  Widget build(BuildContext context) {
+    final lightTheme = ThemeData(
       colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
       useMaterial3: true,
-    ),
-    darkTheme: ThemeData(
+    );
+    final darkTheme = ThemeData(
       colorScheme: ColorScheme.fromSeed(
         seedColor: Colors.indigo,
         brightness: Brightness.dark,
       ),
       useMaterial3: true,
-    ),
-    home: VaultScreen(themeMode: themeMode, onTheme: _setTheme),
-  );
+    );
+    return MaterialApp(
+      title: 'JSON Notebook',
+      debugShowCheckedModeBanner: false,
+      builder: (context, child) {
+        final brightness = navigationBrightness(
+          themeMode,
+          MediaQuery.platformBrightnessOf(context),
+        );
+        final background =
+            (brightness == Brightness.dark ? darkTheme : lightTheme)
+                .scaffoldBackgroundColor;
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: navigationBarStyle(brightness, backgroundColor: background),
+          child: ColoredBox(
+            color: background,
+            child: child ?? const SizedBox.shrink(),
+          ),
+        );
+      },
+      themeMode: themeMode,
+      theme: lightTheme,
+      darkTheme: darkTheme,
+      home: VaultScreen(themeMode: themeMode, onTheme: _setTheme),
+    );
+  }
 }
 
 /// The signed-in account workflow, separate from the document store. Tests
