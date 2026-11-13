@@ -19,4 +19,4 @@ legacy_capacitor/dist/
 .env
 .env.*
 .firebase/
-release.jks
+*.jks
