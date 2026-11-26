@@ -1,7 +1,7 @@
 name: json_notebook
 description: Native Flutter JSON vault backed by Google Drive.
 publish_to: none
-version: 1.0.5+11
+version: 1.0.6+12
 environment:
   sdk: ^3.13.0
 dependencies:
