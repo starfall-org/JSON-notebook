@@ -1261,11 +1261,7 @@ class _VaultScreenState extends State<VaultScreen> {
                                 ),
                                 child: SelectableText(
                                   content,
-                                  style: const TextStyle(
-                                    fontFamily: 'monospace',
-                                    fontSize: 13,
-                                    height: 1.55,
-                                  ),
+                                  style: notebookContentStyle,
                                 ),
                               ),
                             ],

@@ -8,6 +8,10 @@
       {
         "source": "/@(index.html|flutter_bootstrap.js|flutter.js|main.dart.js|manifest.json)",
         "headers": [{"key": "Cache-Control", "value": "no-cache"}]
+      },
+      {
+        "source": "/assets/FontManifest.json",
+        "headers": [{"key": "Cache-Control", "value": "no-cache"}]
       }
     ]
   }

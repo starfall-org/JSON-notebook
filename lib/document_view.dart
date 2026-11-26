@@ -153,6 +153,7 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
                             child: TextFormField(
                               key: ValueKey('json-value-${field.id}'),
                               initialValue: field.text,
+                              style: notebookContentStyle,
                               minLines: 1,
                               maxLines: 8,
                               onChanged: (value) => field.text = value,
@@ -636,7 +637,9 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
     final strings = value is List
         ? value.cast<String>()
         : <String>[value as String];
-    if (strings.isEmpty) return const SelectableText('[]');
+    if (strings.isEmpty) {
+      return const SelectableText('[]', style: notebookContentStyle);
+    }
     return Padding(
       padding: const EdgeInsets.only(top: 4),
       child: Column(
@@ -663,10 +666,7 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
                         padding: const EdgeInsets.symmetric(vertical: 6),
                         child: SelectableText(
                           strings[index],
-                          style: const TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 13,
-                          ),
+                          style: notebookContentStyle,
                         ),
                       ),
                     ),

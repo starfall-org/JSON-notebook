@@ -19,3 +19,9 @@ dev_dependencies:
   flutter_lints: ^6.0.0
 flutter:
   uses-material-design: true
+  assets:
+    - assets/fonts/JetBrainsMono-OFL.txt
+  fonts:
+    - family: JetBrains Mono NL
+      fonts:
+        - asset: assets/fonts/JetBrainsMonoNL-Regular.ttf

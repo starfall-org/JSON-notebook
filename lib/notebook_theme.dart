@@ -4,6 +4,12 @@ import 'system_bars.dart';
 
 const notebookWidth = 860.0;
 const notebookContentInset = 14.0;
+const notebookContentStyle = TextStyle(
+  fontFamily: 'JetBrains Mono NL',
+  fontSize: 13,
+  height: 1.55,
+  letterSpacing: 0,
+);
 
 abstract final class NotebookTheme {
   static final light = _build(Brightness.light);

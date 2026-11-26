@@ -45,6 +45,10 @@ void main() {
           ),
           findsOneWidget,
         );
+        final text = tester.widget<SelectableText>(
+          find.descendant(of: blocks[i], matching: find.byType(SelectableText)),
+        );
+        expect(text.style?.fontFamily, 'JetBrains Mono NL');
       }
       for (var i = 1; i < blocks.length; i++) {
         expect(
@@ -58,6 +62,15 @@ void main() {
       expect(doc.data, {
         'Entries': ['first', 'second', 'third'],
       });
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+      final valueInput = tester.widget<TextField>(
+        find.descendant(
+          of: find.byKey(const ValueKey('json-value-0')),
+          matching: find.byType(TextField),
+        ),
+      );
+      expect(valueInput.style?.fontFamily, 'JetBrains Mono NL');
       expect(tester.takeException(), isNull);
     },
   );
