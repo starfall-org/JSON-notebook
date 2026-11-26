@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'json_document.dart';
 import 'json_key_label.dart';
 import 'json_search.dart';
+import 'notebook_theme.dart';
 
 class JsonDocumentView extends StatefulWidget {
   const JsonDocumentView({
@@ -768,13 +769,13 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
                   opacity: draggingId == id ? 0.3 : 1,
                   duration: const Duration(milliseconds: 100),
                   child: Container(
-                    margin: const EdgeInsets.symmetric(vertical: 3),
-                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    margin: const EdgeInsets.only(bottom: 6),
                     decoration: BoxDecoration(
                       color: active && hoverPosition == JsonDropPosition.inside
                           ? color.primaryContainer
                           : color.surface,
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: color.outlineVariant),
                     ),
                     foregroundDecoration: BoxDecoration(
                       border: Border(
@@ -962,10 +963,23 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
                     key: ValueKey('json-results-$needle'),
                     controller: _scrollController,
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
+                      horizontal: notebookContentInset,
+                      vertical: 12,
                     ),
                     children: [
+                      if (all.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            'This document has no entries yet',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            ),
+                          ),
+                        ),
                       for (final item in matches)
                         entry(
                           [item.key],

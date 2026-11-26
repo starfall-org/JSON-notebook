@@ -13,9 +13,6 @@ android/local.properties
 android/key.properties
 android/.gradle/
 android/captures/
-# Legacy web dependencies and outputs
-legacy_capacitor/node_modules/
-legacy_capacitor/dist/
 .env
 .env.*
 .firebase/

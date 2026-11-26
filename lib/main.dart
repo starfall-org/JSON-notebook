@@ -10,6 +10,7 @@ import 'document_view.dart';
 import 'firebase_options.dart';
 import 'folder_drawer.dart';
 import 'json_document.dart';
+import 'notebook_theme.dart';
 import 'system_bars.dart';
 import 'vault_migration.dart';
 import 'vault_naming.dart';
@@ -55,36 +56,25 @@ class _JsonNotebookAppState extends State<JsonNotebookApp> {
 
   @override
   Widget build(BuildContext context) {
-    final lightTheme = ThemeData(
-      colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
-      useMaterial3: true,
+    final lightTheme = NotebookTheme.light;
+    final darkTheme = NotebookTheme.dark;
+    final brightness = systemBarBrightness(
+      themeMode,
+      MediaQuery.platformBrightnessOf(context),
     );
-    final darkTheme = ThemeData(
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: Colors.indigo,
-        brightness: Brightness.dark,
-      ),
-      useMaterial3: true,
-    );
+    final background = (brightness == Brightness.dark ? darkTheme : lightTheme)
+        .scaffoldBackgroundColor;
     return MaterialApp(
       title: 'JSON Notebook',
+      color: background,
       debugShowCheckedModeBanner: false,
-      builder: (context, child) {
-        final brightness = navigationBrightness(
-          themeMode,
-          MediaQuery.platformBrightnessOf(context),
-        );
-        final background =
-            (brightness == Brightness.dark ? darkTheme : lightTheme)
-                .scaffoldBackgroundColor;
-        return AnnotatedRegion<SystemUiOverlayStyle>(
-          value: navigationBarStyle(brightness, backgroundColor: background),
-          child: ColoredBox(
-            color: background,
-            child: child ?? const SizedBox.shrink(),
-          ),
-        );
-      },
+      builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+        value: navigationBarStyle(brightness, backgroundColor: background),
+        child: ColoredBox(
+          color: background,
+          child: child ?? const SizedBox.shrink(),
+        ),
+      ),
       themeMode: themeMode,
       theme: lightTheme,
       darkTheme: darkTheme,
@@ -112,6 +102,8 @@ class _FirebaseVaultSession implements VaultSession {
 
   GoogleSignInAccount? _nativeAccount;
   String? _webDriveToken;
+
+  bool get hasWebIdentity => kIsWeb && _auth.currentUser != null;
 
   GoogleAuthProvider _driveProvider() =>
       GoogleAuthProvider()..addScope(driveScope);
@@ -332,6 +324,10 @@ class _VaultScreenState extends State<VaultScreen> {
         _cycleTheme();
       case 'logout':
         _logout();
+      case 'exit-demo':
+        _clearVault();
+      case 'refresh':
+        _refresh();
     }
   }
 
@@ -369,15 +365,23 @@ class _VaultScreenState extends State<VaultScreen> {
       return;
     }
     if (path.length < 2) return;
-    final previous = path[path.length - 2];
-    final children = await store!.children(previous.id);
+    await _openAncestor(path.length - 2);
+  });
+
+  Future<void> _openAncestor(int index) async {
+    final children = await store!.children(path[index].id);
     if (mounted) {
       setState(() {
-        path.removeLast();
+        path.removeRange(index + 1, path.length);
         entries = children;
+        openFile = null;
+        activeDocument = null;
+        content = '';
+        _resetSearch();
       });
     }
-  });
+  }
+
   Future<void> _refresh() => _run(() async {
     if (path.isEmpty) return;
     final children = store is CachedVaultStore
@@ -395,7 +399,7 @@ class _VaultScreenState extends State<VaultScreen> {
           initialValue: draftValue,
           onChanged: (value) => draftValue = value,
           autofocus: true,
-          decoration: const InputDecoration(border: OutlineInputBorder()),
+          decoration: const InputDecoration(labelText: 'Name'),
         ),
         actions: [
           TextButton(
@@ -460,21 +464,26 @@ class _VaultScreenState extends State<VaultScreen> {
     widget.onTheme(next);
   }
 
+  void _clearVault() {
+    setState(() {
+      _signedIn = false;
+      _restoringSession = false;
+      _needsDriveReconnect = false;
+      error = '';
+      store = null;
+      path.clear();
+      entries = [];
+      openFile = null;
+      activeDocument = null;
+      content = '';
+      _resetSearch();
+    });
+  }
+
   Future<void> _logout() async {
     try {
       await _session.signOut();
-      if (mounted) {
-        setState(() {
-          _signedIn = false;
-          _restoringSession = false;
-          store = null;
-          path.clear();
-          entries = [];
-          openFile = null;
-          activeDocument = null;
-          _resetSearch();
-        });
-      }
+      if (mounted) _clearVault();
     } catch (e) {
       if (mounted) setState(() => error = e.toString());
     }
@@ -553,6 +562,7 @@ class _VaultScreenState extends State<VaultScreen> {
     setState(() {
       busy = true;
       error = '';
+      _needsDriveReconnect = false;
     });
     try {
       final encoded = document.toJson();
@@ -565,7 +575,12 @@ class _VaultScreenState extends State<VaultScreen> {
       }
       return true;
     } catch (e) {
-      if (mounted) setState(() => error = e.toString());
+      if (mounted) {
+        setState(() {
+          error = e.toString();
+          _needsDriveReconnect = e is DriveAuthorizationExpired;
+        });
+      }
       return false;
     } finally {
       if (mounted) setState(() => busy = false);
@@ -759,6 +774,248 @@ class _VaultScreenState extends State<VaultScreen> {
     }
   }
 
+  Widget _loginCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = theme.colorScheme;
+    final session = _session;
+    final reconnect =
+        session is _FirebaseVaultSession && session.hasWebIdentity;
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: SizedBox(
+          width: 420,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: color.surface,
+              border: Border.all(color: color.outlineVariant),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: color.primaryContainer,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Icon(
+                          Icons.data_object,
+                          size: 28,
+                          color: color.onPrimaryContainer,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text('JSON Notebook', style: theme.textTheme.headlineMedium),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Organize your notes in JSON files stored in Google Drive.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: color.onSurfaceVariant,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  FilledButton.icon(
+                    onPressed: busy ? null : _login,
+                    icon: const Icon(Icons.login),
+                    label: Text(
+                      reconnect
+                          ? 'Reconnect Google Drive'
+                          : 'Continue with Google',
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  OutlinedButton(
+                    onPressed: busy ? null : () => _connect(DemoStore()),
+                    child: const Text('Explore demo'),
+                  ),
+                  if (reconnect)
+                    TextButton(
+                      onPressed: busy ? null : _logout,
+                      child: const Text('Sign out'),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _breadcrumbs(bool inDocument) {
+    final color = Theme.of(context).colorScheme;
+    final count = inDocument ? path.length : path.length - 1;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        notebookContentInset,
+        8,
+        notebookContentInset,
+        0,
+      ),
+      child: Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          reverse: true,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < count; i++) ...[
+                TextButton(
+                  onPressed: busy ? null : () => _run(() => _openAncestor(i)),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 160),
+                    child: Text(
+                      path[i].name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+                if (i + 1 < count)
+                  Icon(
+                    Icons.chevron_right,
+                    size: 16,
+                    color: color.onSurfaceVariant,
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _folderList(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = theme.colorScheme;
+    final needle = query.trim().toLowerCase();
+    final visible =
+        entries.where((entry) {
+          final name = entry.name.toLowerCase();
+          return (entry.isFolder ||
+                  name.endsWith('.md') ||
+                  name.endsWith('.json')) &&
+              name.contains(needle);
+        }).toList()..sort((a, b) {
+          if (a.isFolder != b.isFolder) return a.isFolder ? -1 : 1;
+          return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+        });
+
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(
+          notebookContentInset,
+          16,
+          notebookContentInset,
+          24,
+        ),
+        itemCount: visible.isEmpty ? 1 : visible.length,
+        itemBuilder: (context, index) {
+          if (visible.isEmpty) {
+            return Container(
+              alignment: Alignment.center,
+              padding: const EdgeInsets.all(28),
+              decoration: BoxDecoration(
+                color: color.surface,
+                border: Border.all(color: color.outlineVariant),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Text(
+                needle.isEmpty ? 'This folder is empty' : 'No matching files',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: color.onSurfaceVariant,
+                ),
+              ),
+            );
+          }
+          final entry = visible[index];
+          final isJson = entry.name.toLowerCase().endsWith('.json');
+          final radius = BorderRadius.circular(12);
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Material(
+              color: color.surface,
+              borderRadius: radius,
+              clipBehavior: Clip.antiAlias,
+              child: Ink(
+                decoration: BoxDecoration(
+                  borderRadius: radius,
+                  border: Border.all(color: color.outlineVariant),
+                ),
+                child: GestureDetector(
+                  onLongPressStart: busy
+                      ? null
+                      : (details) => _showFileContextMenu(entry, details),
+                  child: ListTile(
+                    contentPadding: const EdgeInsetsDirectional.only(
+                      start: 14,
+                      end: 6,
+                    ),
+                    leading: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: entry.isFolder
+                            ? color.primaryContainer
+                            : color.surfaceContainerHigh,
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Icon(
+                          entry.isFolder
+                              ? Icons.folder_outlined
+                              : isJson
+                              ? Icons.data_object
+                              : Icons.description_outlined,
+                          size: 20,
+                          color: entry.isFolder
+                              ? color.onPrimaryContainer
+                              : color.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    title: Text(
+                      entry.isFolder ? entry.name : _fileTitle(entry.name),
+                      style: theme.textTheme.titleSmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: entry.isFolder
+                        ? null
+                        : Text(isJson ? 'JSON · Structured' : 'Markdown'),
+                    onTap: busy ? null : () => _open(entry),
+                    trailing: PopupMenuButton<String>(
+                      tooltip: 'Options for ${entry.name}',
+                      enabled: !busy,
+                      onSelected: (action) => _fileOption(action, entry),
+                      itemBuilder: (context) => _fileMenuItems(entry),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  String _fileTitle(String name) =>
+      name.replaceFirst(RegExp(r'\.(?:md|json)$', caseSensitive: false), '');
+
   @override
   void dispose() {
     searchController.dispose();
@@ -767,8 +1024,22 @@ class _VaultScreenState extends State<VaultScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final color = theme.colorScheme;
     final current = openFile;
+    final size = MediaQuery.sizeOf(context);
+    final safePadding = MediaQuery.paddingOf(context);
+    final columnWidth = size.width - safePadding.horizontal;
+    final gutter = columnWidth > notebookWidth
+        ? (columnWidth - notebookWidth) / 2
+        : 0.0;
+    final showRefresh = columnWidth >= 600;
+    final hasNavigation = store != null;
+    final themeIcon = switch (widget.themeMode) {
+      ThemeMode.system => Icons.brightness_auto_outlined,
+      ThemeMode.light => Icons.light_mode_outlined,
+      ThemeMode.dark => Icons.dark_mode_outlined,
+    };
     return PopScope(
       canPop: openFile == null && path.length < 2,
       onPopInvokedWithResult: (didPop, result) {
@@ -786,34 +1057,58 @@ class _VaultScreenState extends State<VaultScreen> {
                 onFile: (folders, file) => _browseFromDrawer(folders, file),
               ),
         appBar: AppBar(
-          title: search && (current == null || activeDocument != null)
+          automaticallyImplyLeading: false,
+          shape: hasNavigation ? null : const Border(),
+          leadingWidth: gutter + 54,
+          actionsPadding: EdgeInsetsDirectional.only(end: gutter + 6),
+          titleSpacing: 6,
+          title: !hasNavigation
+              ? null
+              : search
               ? TextField(
                   controller: searchController,
                   autofocus: true,
                   decoration: InputDecoration(
                     hintText: current == null ? 'Search files' : 'Search JSON',
-                    border: InputBorder.none,
+                    isDense: true,
+                    fillColor: color.surface,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                   ),
                   onChanged: (value) => setState(() => query = value),
                 )
               : Text(
-                  current?.name.replaceAll(
-                        RegExp(r'\.(?:md|json)$', caseSensitive: false),
-                        '',
-                      ) ??
-                      (path.isEmpty ? 'JSON Notebook' : path.last.name),
+                  current == null ? path.last.name : _fileTitle(current.name),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-          leading: (current != null || path.length > 1)
-              ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: _back)
-              : store != null
-              ? IconButton(
-                  tooltip: 'Folders',
-                  icon: const Icon(Icons.menu),
-                  onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-                )
-              : null,
+          leading: !hasNavigation
+              ? null
+              : Padding(
+                  padding: EdgeInsetsDirectional.only(start: gutter + 6),
+                  child: (current != null || path.length > 1)
+                      ? IconButton(
+                          tooltip: MaterialLocalizations.of(context)
+                              .backButtonTooltip,
+                          icon: const BackButtonIcon(),
+                          onPressed: busy ? null : _back,
+                        )
+                      : IconButton(
+                          tooltip: 'Folders',
+                          icon: const Icon(Icons.menu),
+                          onPressed: _openFolders,
+                        ),
+                ),
           actions: [
-            if (store != null && (current == null || activeDocument != null))
+            if (!hasNavigation)
+              IconButton(
+                tooltip: 'Theme: ${widget.themeMode.name}',
+                icon: Icon(themeIcon),
+                onPressed: _cycleTheme,
+              ),
+            if (hasNavigation && (current == null || activeDocument != null))
               IconButton(
                 tooltip: search
                     ? 'Close search'
@@ -832,6 +1127,7 @@ class _VaultScreenState extends State<VaultScreen> {
             if (!search && store != null && current == null)
               PopupMenuButton<String>(
                 tooltip: 'Add',
+                enabled: !busy,
                 icon: const Icon(Icons.add),
                 onSelected: _create,
                 itemBuilder: (_) => [
@@ -851,6 +1147,7 @@ class _VaultScreenState extends State<VaultScreen> {
             if (!search && current != null)
               PopupMenuButton<String>(
                 tooltip: 'File options',
+                enabled: !busy,
                 onSelected: (action) => action == 'folders'
                     ? _openFolders()
                     : _fileOption(action, current),
@@ -863,11 +1160,20 @@ class _VaultScreenState extends State<VaultScreen> {
                   ),
                 ],
               ),
-            if (!search && store != null && current == null)
+            if (!search && hasNavigation && current == null && showRefresh)
+              IconButton(
+                tooltip: 'Refresh folder',
+                icon: const Icon(Icons.refresh),
+                onPressed: busy ? null : _refresh,
+              ),
+            if (!search && hasNavigation && current == null)
               PopupMenuButton<String>(
                 tooltip: 'More',
+                enabled: !busy,
                 onSelected: _moreAction,
                 itemBuilder: (_) => [
+                  if (!showRefresh)
+                    _menuOption('refresh', Icons.refresh, 'Refresh folder'),
                   _menuOption(
                     'folders',
                     Icons.account_tree_outlined,
@@ -884,186 +1190,90 @@ class _VaultScreenState extends State<VaultScreen> {
                     'Theme: ${widget.themeMode.name}',
                   ),
                   if (_signedIn)
-                    _menuOption('logout', Icons.logout, 'Sign out'),
+                    _menuOption('logout', Icons.logout, 'Sign out')
+                  else
+                    _menuOption('exit-demo', Icons.logout, 'Exit demo'),
                 ],
               ),
           ],
         ),
-        // The AppBar already handles the status-bar inset. Protect the
-        // scrollable body from Android's gesture/navigation area without
-        // adding the top inset twice (including with edge-to-edge enabled).
         body: SafeArea(
           top: false,
-          child: Column(
-            children: [
-              if (busy) const LinearProgressIndicator(),
-              if (error.isNotEmpty)
-                MaterialBanner(
-                  content: SelectableText(error),
-                  actions: [
-                    if (_needsDriveReconnect)
-                      TextButton(
-                        onPressed: _login,
-                        child: const Text('Reconnect Google Drive'),
-                      ),
-                    TextButton(
-                      onPressed: () => setState(() => error = ''),
-                      child: const Text('Dismiss'),
+          child: Center(
+            child: SizedBox(
+              width: notebookWidth,
+              child: Column(
+                children: [
+                  if (busy) const LinearProgressIndicator(),
+                  if (error.isNotEmpty)
+                    MaterialBanner(
+                      content: SelectableText(error),
+                      actions: [
+                        if (_needsDriveReconnect)
+                          TextButton(
+                            onPressed: _login,
+                            child: const Text('Reconnect Google Drive'),
+                          ),
+                        TextButton(
+                          onPressed: () => setState(() => error = ''),
+                          child: const Text('Dismiss'),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              Expanded(
-                child: _restoringSession
-                    ? const Center(
-                        child: CircularProgressIndicator(
-                          key: ValueKey('vault-session-loading'),
-                          semanticsLabel: 'Restoring session',
-                        ),
-                      )
-                    : store == null
-                    ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.lock_outline,
-                              size: 52,
-                              color: color.primary,
+                  if (path.length > 1 || current != null)
+                    _breadcrumbs(current != null),
+                  Expanded(
+                    child: _restoringSession
+                        ? const Center(
+                            child: CircularProgressIndicator(
+                              key: ValueKey('vault-session-loading'),
+                              semanticsLabel: 'Restoring session',
                             ),
-                            const SizedBox(height: 20),
-                            Text(
-                              'JSON Notebook',
-                              style: Theme.of(context).textTheme.headlineMedium,
-                            ),
-                            const SizedBox(height: 18),
-                            FilledButton.icon(
-                              onPressed: _login,
-                              icon: const Icon(Icons.login),
-                              label: const Text('Continue with Google'),
-                            ),
-                            const SizedBox(height: 8),
-                            TextButton(
-                              onPressed: () => _connect(DemoStore()),
-                              child: const Text('Explore demo'),
-                            ),
-                          ],
-                        ),
-                      )
-                    : current != null
-                    ? activeDocument != null
-                          ? JsonDocumentView(
-                              key: _documentKey,
-                              documentId: current.id,
-                              document: activeDocument!,
-                              searchQuery: search ? query : '',
-                              onSave: _saveDocument,
-                            )
-                          : ListView(
-                              padding: const EdgeInsets.all(18),
-                              children: [
-                                Text(
-                                  'Markdown source (not rendered)',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .labelMedium,
+                          )
+                        : !hasNavigation
+                        ? _loginCard(context)
+                        : current == null
+                        ? _folderList(context)
+                        : activeDocument != null
+                        ? JsonDocumentView(
+                            key: _documentKey,
+                            documentId: current.id,
+                            document: activeDocument!,
+                            searchQuery: search ? query : '',
+                            onSave: _saveDocument,
+                          )
+                        : ListView(
+                            padding: const EdgeInsets.all(notebookContentInset),
+                            children: [
+                              Text(
+                                'Markdown source (not rendered)',
+                                style: theme.textTheme.labelLarge,
+                              ),
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: color.surface,
+                                  border: Border.all(
+                                    color: color.outlineVariant,
+                                  ),
+                                  borderRadius: BorderRadius.circular(14),
                                 ),
-                                const SizedBox(height: 12),
-                                SelectableText(
+                                child: SelectableText(
                                   content,
                                   style: const TextStyle(
                                     fontFamily: 'monospace',
                                     fontSize: 13,
+                                    height: 1.55,
                                   ),
                                 ),
-                              ],
-                            )
-                    : RefreshIndicator(
-                        onRefresh: _refresh,
-                        child: Builder(
-                          builder: (context) {
-                            final visible =
-                                entries
-                                    .where(
-                                      (entry) =>
-                                          (entry.isFolder ||
-                                              (entry.name
-                                                      .toLowerCase()
-                                                      .endsWith('.md') ||
-                                                  entry.name
-                                                      .toLowerCase()
-                                                      .endsWith('.json'))) &&
-                                          entry.name.toLowerCase().contains(
-                                            query.toLowerCase(),
-                                          ),
-                                    )
-                                    .toList()
-                                  ..sort((a, b) {
-                                    if (a.isFolder != b.isFolder) {
-                                      return a.isFolder ? -1 : 1;
-                                    }
-                                    return a.name.toLowerCase().compareTo(
-                                      b.name.toLowerCase(),
-                                    );
-                                  });
-                            return ListView.builder(
-                              physics: const AlwaysScrollableScrollPhysics(),
-                              itemCount: visible.length,
-                              itemBuilder: (context, i) {
-                                final entry = visible[i];
-                                return GestureDetector(
-                                  onLongPressStart: (details) =>
-                                      _showFileContextMenu(entry, details),
-                                  child: ListTile(
-                                    leading: Icon(
-                                      entry.isFolder
-                                          ? Icons.folder_outlined
-                                          : entry.name.toLowerCase().endsWith(
-                                              '.json',
-                                            )
-                                          ? Icons.data_object
-                                          : Icons.description_outlined,
-                                      color: color.primary,
-                                    ),
-                                    title: Text(
-                                      entry.isFolder
-                                          ? entry.name
-                                          : entry.name.replaceAll(
-                                              RegExp(
-                                                r'\.(?:md|json)$',
-                                                caseSensitive: false,
-                                              ),
-                                              '',
-                                            ),
-                                    ),
-                                    subtitle: entry.isFolder
-                                        ? null
-                                        : Text(
-                                            entry.name.toLowerCase().endsWith(
-                                                  '.json',
-                                                )
-                                                ? 'JSON · Structured'
-                                                : 'Markdown',
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .labelSmall,
-                                          ),
-                                    onTap: () => _open(entry),
-                                    trailing: PopupMenuButton<String>(
-                                      tooltip: 'Options for ${entry.name}',
-                                      onSelected: (action) =>
-                                          _fileOption(action, entry),
-                                      itemBuilder: (context) =>
-                                          _fileMenuItems(entry),
-                                    ),
-                                  ),
-                                );
-                              },
-                            );
-                          },
-                        ),
-                      ),
+                              ),
+                            ],
+                          ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),

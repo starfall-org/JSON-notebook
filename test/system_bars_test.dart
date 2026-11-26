@@ -36,21 +36,21 @@ void main() {
     },
   );
 
-  test('Explicit theme overrides system brightness for navigation icons', () {
+  test('Explicit theme overrides system brightness for system bars', () {
     expect(
-      navigationBrightness(ThemeMode.light, Brightness.dark),
+      systemBarBrightness(ThemeMode.light, Brightness.dark),
       Brightness.light,
     );
     expect(
-      navigationBrightness(ThemeMode.dark, Brightness.light),
+      systemBarBrightness(ThemeMode.dark, Brightness.light),
       Brightness.dark,
     );
     expect(
-      navigationBrightness(ThemeMode.system, Brightness.dark),
+      systemBarBrightness(ThemeMode.system, Brightness.dark),
       Brightness.dark,
     );
     expect(
-      navigationBrightness(ThemeMode.system, Brightness.light),
+      systemBarBrightness(ThemeMode.system, Brightness.light),
       Brightness.light,
     );
   });
@@ -111,77 +111,73 @@ void main() {
     }
   });
 
-  testWidgets(
-    'Navigation background follows system changes and explicit app theme',
-    (tester) async {
-      SharedPreferences.setMockInitialValues({'theme': ThemeMode.system.index});
-      final platform = tester.binding.platformDispatcher;
-      addTearDown(platform.clearPlatformBrightnessTestValue);
-      platform.platformBrightnessTestValue = Brightness.light;
-      await tester.pumpWidget(const JsonNotebookApp());
-      await tester.pumpAndSettle();
+  testWidgets('Both bars follow system changes and explicit app theme', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({'theme': ThemeMode.system.index});
+    final platform = tester.binding.platformDispatcher;
+    addTearDown(platform.clearPlatformBrightnessTestValue);
+    tester.view.padding = const FakeViewPadding(top: 28, bottom: 34);
+    addTearDown(tester.view.resetPadding);
+    platform.platformBrightnessTestValue = Brightness.light;
+    await tester.pumpWidget(const JsonNotebookApp());
+    await tester.pumpAndSettle();
 
-      SystemUiOverlayStyle style() => tester
-          .widget<AnnotatedRegion<SystemUiOverlayStyle>>(
-            find.byWidgetPredicate(
-              (widget) =>
-                  widget is AnnotatedRegion<SystemUiOverlayStyle> &&
-                  widget.value.systemNavigationBarContrastEnforced == false,
-            ),
-          )
-          .value;
-      final lightColor = style().systemNavigationBarColor;
-      expect(style().systemNavigationBarIconBrightness, Brightness.dark);
-      platform.platformBrightnessTestValue = Brightness.dark;
-      await tester.pumpAndSettle();
-      expect(style().systemNavigationBarColor, isNot(lightColor));
-      expect(style().systemNavigationBarIconBrightness, Brightness.light);
+    void expectBars(Brightness icons) {
+      final style = SystemChrome.latestStyle!;
+      final theme = Theme.of(tester.element(find.byType(VaultScreen)));
+      expect(style.statusBarColor, Colors.transparent);
+      expect(style.systemStatusBarContrastEnforced, isFalse);
+      expect(style.statusBarIconBrightness, icons);
+      expect(style.systemNavigationBarColor, theme.scaffoldBackgroundColor);
+      expect(style.systemNavigationBarContrastEnforced, isFalse);
+      expect(style.systemNavigationBarIconBrightness, icons);
+    }
 
-      final screen = tester.widget<VaultScreen>(find.byType(VaultScreen));
-      screen.onTheme(ThemeMode.light);
-      await tester.pumpAndSettle();
-      expect(style().systemNavigationBarColor, lightColor);
-      expect(style().systemNavigationBarIconBrightness, Brightness.dark);
-      platform.platformBrightnessTestValue = Brightness.light;
-      screen.onTheme(ThemeMode.dark);
-      await tester.pumpAndSettle();
-      expect(style().systemNavigationBarColor, isNot(lightColor));
-      expect(style().systemNavigationBarIconBrightness, Brightness.light);
-    },
-  );
+    expectBars(Brightness.dark);
+    platform.platformBrightnessTestValue = Brightness.dark;
+    await tester.pumpAndSettle();
+    expectBars(Brightness.light);
 
-  test('Both Android launch and normal themes have transparent navigation', () {
+    final screen = tester.widget<VaultScreen>(find.byType(VaultScreen));
+    screen.onTheme(ThemeMode.light);
+    await tester.pumpAndSettle();
+    expectBars(Brightness.dark);
+    platform.platformBrightnessTestValue = Brightness.light;
+    screen.onTheme(ThemeMode.dark);
+    await tester.pumpAndSettle();
+    expectBars(Brightness.light);
+  });
+
+  test('Android launch and normal themes match system bars to device mode', () {
     for (final variant in ['values', 'values-night']) {
       final xml = File('android/app/src/main/res/$variant/styles.xml')
           .readAsStringSync();
-      expect(
-        RegExp(r'<style name="LaunchTheme"[\s\S]*?</style>')
-            .firstMatch(xml)
-            ?.group(0),
-        contains(
-          '<item name="android:navigationBarColor">@android:color/transparent</item>',
-        ),
-      );
-      expect(
-        RegExp(r'<style name="NormalTheme"[\s\S]*?</style>')
-            .firstMatch(xml)
-            ?.group(0),
-        contains(
-          '<item name="android:navigationBarColor">@android:color/transparent</item>',
-        ),
-      );
-      expect(
-        RegExp('android:windowNavigationBarContrastEnforced">false')
-            .allMatches(xml),
-        hasLength(2),
-      );
-      expect(
-        RegExp(
-          'android:windowLightNavigationBar">'
-          '${variant == 'values' ? 'true' : 'false'}',
-        ).allMatches(xml),
-        hasLength(2),
-      );
+      final lightIcons = variant == 'values-night';
+      for (final name in ['LaunchTheme', 'NormalTheme']) {
+        final style = RegExp('<style name="$name"[\\s\\S]*?</style>')
+            .firstMatch(xml)!
+            .group(0)!;
+        for (final bar in ['StatusBar', 'NavigationBar']) {
+          final color = '${bar[0].toLowerCase()}${bar.substring(1)}Color';
+          expect(
+            style,
+            contains(
+              '<item name="android:$color">@android:color/transparent</item>',
+            ),
+          );
+          expect(
+            style,
+            contains('<item name="android:enforce${bar}Contrast">false</item>'),
+          );
+          expect(
+            style,
+            contains(
+              '<item name="android:windowLight$bar">${!lightIcons}</item>',
+            ),
+          );
+        }
+      }
     }
   });
 }

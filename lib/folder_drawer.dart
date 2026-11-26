@@ -26,9 +26,11 @@ class FolderDrawer extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           ListTile(
-            title: const Text('JSON Notebook'),
-            leading: const Icon(Icons.folder_open),
-            subtitle: const Text('Google Drive vault'),
+            title: Text(
+              'Folders',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            leading: const Icon(Icons.folder_open_outlined),
           ),
           const Divider(height: 1),
           Expanded(

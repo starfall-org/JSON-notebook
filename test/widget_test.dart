@@ -36,6 +36,38 @@ void main() {
     expect(find.text('services'), findsOneWidget);
     expect(find.text('cloud'), findsOneWidget);
   });
+
+  testWidgets('Wide vault stays centered and breadcrumbs navigate to root', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1440, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: VaultScreen(
+          themeMode: ThemeMode.system,
+          onTheme: _noop,
+          session: SignedOutTestSession(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Explore demo'));
+    await tester.pumpAndSettle();
+
+    final list = tester.getRect(find.byType(ListView));
+    expect(list.width, lessThan(1000));
+    expect(list.center.dx, 720);
+    expect(find.byTooltip('Refresh folder'), findsOneWidget);
+
+    await tester.tap(find.text('cloud'));
+    await tester.pumpAndSettle();
+    expect(find.text('main'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, 'secrets'));
+    await tester.pumpAndSettle();
+    expect(find.text('main'), findsNothing);
+    expect(find.text('services'), findsOneWidget);
+  });
 }
 
 void _noop(ThemeMode mode) {}
