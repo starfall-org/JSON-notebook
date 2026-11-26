@@ -4,7 +4,7 @@ JSON Notebook stores hierarchical **JSON** data in Google Drive. The same Flutte
 
 ## App identity and Android sign-in
 
-The Android application ID is `org.starfallorb.jsonnotebook`, registered as
+The Android application ID is `org.starfall.jsonnotebook`, registered as
 **JSON Notebook (Android)** in Firebase project `awesome-89e82`. The Flutter
 package is `json_notebook` and its Firebase options are in
 `lib/firebase_options.dart`. The release signing certificate's SHA-1 and SHA-256

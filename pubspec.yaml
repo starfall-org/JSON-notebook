@@ -1,7 +1,7 @@
 name: json_notebook
 description: Native Flutter JSON vault backed by Google Drive.
 publish_to: none
-version: 1.0.4+10
+version: 1.0.5+11
 environment:
   sdk: ^3.13.0
 dependencies:
@@ -20,6 +20,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - assets/branding/json-notebook.png
     - assets/fonts/JetBrainsMono-OFL.txt
   fonts:
     - family: JetBrains Mono NL

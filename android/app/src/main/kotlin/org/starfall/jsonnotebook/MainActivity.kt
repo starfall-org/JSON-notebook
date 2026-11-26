@@ -1,4 +1,4 @@
-package org.starfallorb.jsonnotebook
+package org.starfall.jsonnotebook
 
 import io.flutter.embedding.android.FlutterActivity
 

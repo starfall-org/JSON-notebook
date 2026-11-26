@@ -799,18 +799,13 @@ class _VaultScreenState extends State<VaultScreen> {
                 children: [
                   Align(
                     alignment: Alignment.centerLeft,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: color.primaryContainer,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Icon(
-                          Icons.data_object,
-                          size: 28,
-                          color: color.onPrimaryContainer,
-                        ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: Image.asset(
+                        'assets/branding/json-notebook.png',
+                        width: 52,
+                        height: 52,
+                        excludeFromSemantics: true,
                       ),
                     ),
                   ),
