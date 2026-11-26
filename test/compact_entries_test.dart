@@ -32,7 +32,7 @@ Finder handle(String path) => find.descendant(
 );
 
 void main() {
-  testWidgets('Only valued entries open details; branch rows toggle the tree', (
+  testWidgets('Rows toggle inline values and branches without a dialog', (
     tester,
   ) async {
     final doc = JsonDocument.parse(
@@ -53,15 +53,20 @@ void main() {
     await tester.tap(find.text('EmptyGroup'));
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('secret'), findsOneWidget);
     await tester.tap(find.text('Child'));
     await tester.pumpAndSettle();
+    expect(find.text('secret'), findsNothing);
+    await tester.tap(find.byTooltip('Toggle Child'));
+    await tester.pumpAndSettle();
     expect(find.text('secret'), findsOneWidget);
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('List'));
-    await tester.pumpAndSettle();
     expect(find.text('one'), findsOneWidget);
     expect(find.text('two'), findsOneWidget);
+    await tester.tap(find.byTooltip('Toggle List'));
+    await tester.pumpAndSettle();
+    expect(find.text('one'), findsNothing);
+    expect(find.text('two'), findsNothing);
+    expect(find.byType(AlertDialog), findsNothing);
     expect(doc.at(['Group', 'Child']), 'secret');
   });
 
@@ -96,7 +101,6 @@ void main() {
           return true;
         },
       );
-      expect(find.byType(SelectableText), findsNothing);
       expect(find.byIcon(Icons.edit_outlined), findsNothing);
       await tester.tap(find.byTooltip('Options for Scalar'));
       await tester.pumpAndSettle();
@@ -173,6 +177,24 @@ void main() {
     expect(state.draggingId, '["B"]');
     expect(state.hoverPosition, JsonDropPosition.before);
     await gesture.up();
+    await tester.pumpAndSettle();
+    expect(saved!.data.keys, ['B', 'A']);
+    expect(find.byType(AlertDialog), findsNothing);
+  });
+
+  testWidgets('Inline arrow actions reorder without opening a dialog', (
+    tester,
+  ) async {
+    JsonDocument? saved;
+    await mountDocument(
+      tester,
+      JsonDocument.parse('{"A":"a","B":"b"}'),
+      onSave: (next) async {
+        saved = next;
+        return true;
+      },
+    );
+    await tester.tap(find.byTooltip('Move B up'));
     await tester.pumpAndSettle();
     expect(saved!.data.keys, ['B', 'A']);
     expect(find.byType(AlertDialog), findsNothing);

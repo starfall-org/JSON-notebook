@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:json_notebook/json_document.dart';
 import 'package:json_notebook/main.dart';
 
-import 'entry_test_actions.dart';
 import 'signed_out_test_session.dart';
 
 void main() {
@@ -56,8 +55,13 @@ void main() {
     await tester.tap(find.text('services'));
     await tester.pumpAndSettle();
     expect(find.byTooltip('Search JSON'), findsOneWidget);
-    await openEntry(tester, '["Services","Production","Notes"]');
-    expect(find.byTooltip('Copy value'), findsNWidgets(2));
+    final notes = find.byKey(
+      const ValueKey('json-["Services","Production","Notes"]'),
+    );
+    expect(
+      find.descendant(of: notes, matching: find.byTooltip('Copy value')),
+      findsNWidgets(2),
+    );
     expect(
       find.text('API_URL=https://api.example.com\nTOKEN=demo-value'),
       findsOneWidget,

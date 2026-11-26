@@ -22,15 +22,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('first'), findsNothing);
-      await openEntry(tester, '["Entries"]');
-
       final blocks = [
         for (var i = 0; i < 3; i++)
           find.byKey(ValueKey('json-value-block-["Entries",$i]')),
       ];
       for (var i = 0; i < 3; i++) {
         expect(blocks[i], findsOneWidget);
+        final container = tester.widget<Container>(blocks[i]);
+        expect((container.decoration as BoxDecoration).border, isNotNull);
         expect(
           find.descendant(
             of: blocks[i],
@@ -62,8 +61,7 @@ void main() {
       expect(doc.data, {
         'Entries': ['first', 'second', 'third'],
       });
-      await tester.tap(find.text('Edit'));
-      await tester.pumpAndSettle();
+      await entryAction(tester, 'Entries', 'Edit');
       final valueInput = tester.widget<TextField>(
         find.descendant(
           of: find.byKey(const ValueKey('json-value-0')),
@@ -121,16 +119,10 @@ void main() {
         await tester.pump();
       }
 
-      await openEntry(tester, '["Entries"]');
       await copyFrom('["Entries",2]');
       await copyFrom('["Entries",1]');
       await copyFrom('["Entries",0]');
-      await tester.tap(find.text('Close'));
-      await tester.pumpAndSettle();
-      await openEntry(tester, '["Scalar"]');
       await copyFrom('["Scalar",0]');
-      await tester.tap(find.text('Close'));
-      await tester.pumpAndSettle();
       await entryAction(tester, 'Empty', 'Copy');
       expect(copied, ['third', 'line one\nline two', 'first', 'alone', '']);
       expect(doc.toJson(), original);
@@ -154,7 +146,6 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await openEntry(tester, '["Outer","Tokens"]');
     final block = find.byKey(
       const ValueKey('json-value-block-["Outer","Tokens",1]'),
     );

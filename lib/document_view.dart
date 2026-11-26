@@ -555,134 +555,82 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
         .showSnackBar(const SnackBar(content: Text('Copied to clipboard')));
   }
 
-  Future<void> _showEntry(
+  Widget _valuePanel(
     List<Object> path,
     String label,
     Object value,
     int index,
     int count,
-  ) async {
+  ) {
     final color = Theme.of(context).colorScheme;
-    await showDialog<void>(
-      context: context,
-      builder: (dialog) => AlertDialog(
-        title: SelectableText(label),
-        insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
-        scrollable: true,
-        content: SizedBox(
-          width: 440,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (label.contains('](http')) JsonKeyLabel(rawKey: label),
-              _values(path, value, color.surfaceContainerHighest),
-              if (count > 1)
-                Row(
-                  children: [
-                    IconButton(
-                      tooltip: 'Move $label up',
-                      icon: const Icon(Icons.arrow_upward),
-                      onPressed: index == 0 || !_dragEnabled
-                          ? null
-                          : () {
-                              Navigator.pop(dialog);
-                              reorder(
-                                path.sublist(0, path.length - 1),
-                                index,
-                                -1,
-                              );
-                            },
-                    ),
-                    IconButton(
-                      tooltip: 'Move $label down',
-                      icon: const Icon(Icons.arrow_downward),
-                      onPressed: index + 1 == count || !_dragEnabled
-                          ? null
-                          : () {
-                              Navigator.pop(dialog);
-                              reorder(
-                                path.sublist(0, path.length - 1),
-                                index,
-                                1,
-                              );
-                            },
-                    ),
-                  ],
-                ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => _copy(value), child: const Text('Copy')),
-          TextButton(
-            onPressed: busy
-                ? null
-                : () {
-                    Navigator.pop(dialog);
-                    edit(path, label, value);
-                  },
-            child: const Text('Edit'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialog),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _values(List<Object> path, Object value, Color background) {
     final strings = value is List
         ? value.cast<String>()
         : <String>[value as String];
-    if (strings.isEmpty) {
-      return const SelectableText('[]', style: notebookContentStyle);
-    }
+    final displayed = strings.isEmpty ? const ['[]'] : strings;
+    final canReorder = _dragEnabled && draggingId == null;
+    final parent = path.sublist(0, path.length - 1);
     return Padding(
-      padding: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: 6,
         children: [
-          for (var index = 0; index < strings.length; index++)
-            Padding(
-              padding: EdgeInsets.only(top: index == 0 ? 0 : 6),
-              child: Container(
-                key: ValueKey(
-                  'json-value-block-${jsonEncode([...path, index])}',
+          if (label.contains('](http')) JsonKeyLabel(rawKey: label),
+          for (var i = 0; i < displayed.length; i++)
+            Container(
+              key: ValueKey('json-value-block-${jsonEncode([...path, i])}'),
+              padding: const EdgeInsetsDirectional.fromSTEB(10, 4, 2, 4),
+              decoration: BoxDecoration(
+                color: color.surfaceContainerHighest,
+                border: Border.all(
+                  color: color.outline.withValues(alpha: 0.45),
                 ),
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(10, 4, 2, 4),
-                decoration: BoxDecoration(
-                  color: background,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: SelectableText(
-                          strings[index],
-                          style: notebookContentStyle,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Copy value',
-                      icon: const Icon(Icons.copy_outlined, size: 18),
-                      padding: const EdgeInsets.all(6),
-                      constraints: const BoxConstraints(
-                        minWidth: 36,
-                        minHeight: 36,
-                      ),
-                      onPressed: () => _copy(strings[index]),
-                    ),
-                  ],
-                ),
+                borderRadius: BorderRadius.circular(8),
               ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: SelectableText(
+                        displayed[i],
+                        style: notebookContentStyle,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Copy value',
+                    icon: const Icon(Icons.copy_outlined, size: 18),
+                    padding: const EdgeInsets.all(6),
+                    constraints: const BoxConstraints(
+                      minWidth: 36,
+                      minHeight: 36,
+                    ),
+                    onPressed: () => _copy(displayed[i]),
+                  ),
+                ],
+              ),
+            ),
+          if (count > 1)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                IconButton(
+                  tooltip: 'Move $label up',
+                  icon: const Icon(Icons.arrow_upward, size: 18),
+                  onPressed: canReorder && index > 0
+                      ? () => reorder(parent, index, -1)
+                      : null,
+                ),
+                IconButton(
+                  tooltip: 'Move $label down',
+                  icon: const Icon(Icons.arrow_downward, size: 18),
+                  onPressed: canReorder && index + 1 < count
+                      ? () => reorder(parent, index, 1)
+                      : null,
+                ),
+              ],
             ),
         ],
       ),
@@ -715,7 +663,8 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
               )
               .toList()
         : null;
-    void toggleBranch() => setState(() {
+    final canToggle = needle.isEmpty && !busy && draggingId == null;
+    void toggleEntry() => setState(() {
       if (!collapsed.remove(id)) {
         collapsed.add(id);
       }
@@ -726,217 +675,213 @@ class JsonDocumentViewState extends State<JsonDocumentView> {
       RegExp(r'\[([^\]]+)\]\((https?://[^\s)]+)\)'),
       (match) => match.group(1)!,
     );
+    final header = DragTarget<_JsonKeyDrag>(
+      key: ValueKey('json-drop-$id'),
+      onWillAcceptWithDetails: (details) {
+        if (!_dragEnabled) return false;
+        final allowed =
+            [
+              JsonDropPosition.before,
+              JsonDropPosition.after,
+              if (isObject || value == '') JsonDropPosition.inside,
+            ].any(
+              (mode) =>
+                  widget.document.canMoveKey(details.data.path, path, mode),
+            );
+        if (allowed) {
+          _hover(details.data, path, value, details.offset, dropContext);
+        }
+        return allowed;
+      },
+      onMove: (details) =>
+          _hover(details.data, path, value, details.offset, dropContext),
+      onLeave: (_) => _leaveTarget(id),
+      onAcceptWithDetails: (details) {
+        final mode = _dropMode(value, details.offset, dropContext);
+        if (widget.document.canMoveKey(details.data.path, path, mode)) {
+          _dropKey(details.data, path, mode);
+        }
+        _leaveTarget(id);
+      },
+      builder: (context, candidates, rejected) => Builder(
+        builder: (headerContext) {
+          dropContext = headerContext;
+          return _draggable(
+            path,
+            displayLabel,
+            id,
+            Container(
+              color: active && hoverPosition == JsonDropPosition.inside
+                  ? color.primaryContainer
+                  : null,
+              foregroundDecoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(
+                    width: 3,
+                    color: active && hoverPosition == JsonDropPosition.before
+                        ? color.primary
+                        : Colors.transparent,
+                  ),
+                  bottom: BorderSide(
+                    width: 3,
+                    color: active && hoverPosition == JsonDropPosition.after
+                        ? color.primary
+                        : Colors.transparent,
+                  ),
+                ),
+              ),
+              child: Semantics(
+                expanded: expanded,
+                child: InkWell(
+                  onTap: canToggle ? toggleEntry : null,
+                  child: Row(
+                    children: [
+                      _draggable(
+                        path,
+                        displayLabel,
+                        id,
+                        Semantics(
+                          label: 'Drag $displayLabel',
+                          child: Tooltip(
+                            message: 'Drag to move',
+                            child: SizedBox(
+                              width: 44,
+                              height: 52,
+                              child: Icon(
+                                Icons.drag_indicator,
+                                size: 22,
+                                color: _dragEnabled
+                                    ? color.onSurfaceVariant
+                                    : color.outlineVariant,
+                              ),
+                            ),
+                          ),
+                        ),
+                        immediate: true,
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          expanded ? Icons.expand_more : Icons.chevron_right,
+                        ),
+                        tooltip: 'Toggle $label',
+                        onPressed: canToggle ? toggleEntry : null,
+                        constraints: const BoxConstraints(
+                          minWidth: 40,
+                          minHeight: 48,
+                        ),
+                        padding: EdgeInsets.zero,
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Text(
+                            displayLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                        ),
+                      ),
+                      if (active && hoverPosition == JsonDropPosition.inside)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4),
+                          child: Icon(
+                            Icons.subdirectory_arrow_right,
+                            color: color.primary,
+                            size: 20,
+                          ),
+                        ),
+                      PopupMenuButton<String>(
+                        tooltip: 'Options for $label',
+                        enabled: !busy && draggingId == null,
+                        icon: const Icon(Icons.more_vert),
+                        onSelected: (action) {
+                          switch (action) {
+                            case 'copy':
+                              _copy(value);
+                            case 'edit':
+                              edit(path, label, value);
+                            case 'delete':
+                              delete(path, label);
+                          }
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(value: 'copy', child: Text('Copy')),
+                          PopupMenuItem(value: 'edit', child: Text('Edit')),
+                          PopupMenuItem(value: 'delete', child: Text('Delete')),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
     return Column(
       key: ValueKey('json-$id'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        DragTarget<_JsonKeyDrag>(
-          key: ValueKey('json-drop-$id'),
-          onWillAcceptWithDetails: (details) {
-            if (!_dragEnabled) return false;
-            final allowed =
-                [
-                  JsonDropPosition.before,
-                  JsonDropPosition.after,
-                  if (isObject || value == '') JsonDropPosition.inside,
-                ].any(
-                  (mode) =>
-                      widget.document.canMoveKey(details.data.path, path, mode),
-                );
-            if (allowed) {
-              _hover(details.data, path, value, details.offset, dropContext);
-            }
-            return allowed;
-          },
-          onMove: (details) =>
-              _hover(details.data, path, value, details.offset, dropContext),
-          onLeave: (_) => _leaveTarget(id),
-          onAcceptWithDetails: (details) {
-            final mode = _dropMode(value, details.offset, dropContext);
-            if (widget.document.canMoveKey(details.data.path, path, mode)) {
-              _dropKey(details.data, path, mode);
-            }
-            _leaveTarget(id);
-          },
-          builder: (context, candidates, rejected) => Builder(
-            builder: (headerContext) {
-              dropContext = headerContext;
-              return _draggable(
-                path,
-                displayLabel,
-                id,
-                AnimatedOpacity(
-                  opacity: draggingId == id ? 0.3 : 1,
-                  duration: const Duration(milliseconds: 100),
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 6),
-                    decoration: BoxDecoration(
-                      color: active && hoverPosition == JsonDropPosition.inside
-                          ? color.primaryContainer
-                          : color.surface,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: color.outlineVariant),
-                    ),
-                    foregroundDecoration: BoxDecoration(
-                      border: Border(
-                        top: BorderSide(
-                          width: 3,
-                          color:
-                              active && hoverPosition == JsonDropPosition.before
-                              ? color.primary
-                              : Colors.transparent,
-                        ),
-                        bottom: BorderSide(
-                          width: 3,
-                          color:
-                              active && hoverPosition == JsonDropPosition.after
-                              ? color.primary
-                              : Colors.transparent,
-                        ),
-                      ),
-                    ),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(8),
-                        onTap: busy || draggingId != null
-                            ? null
-                            : isBranch
-                            ? toggleBranch
-                            : () =>
-                                  _showEntry(path, label, value, index, count),
-                        child: Row(
-                          children: [
-                            _draggable(
-                              path,
-                              displayLabel,
-                              id,
-                              Semantics(
-                                label: 'Drag $displayLabel',
-                                child: Tooltip(
-                                  message: 'Drag to move',
-                                  child: SizedBox(
-                                    width: 44,
-                                    height: 52,
-                                    child: Icon(
-                                      Icons.drag_indicator,
-                                      size: 22,
-                                      color: _dragEnabled
-                                          ? color.onSurfaceVariant
-                                          : color.outlineVariant,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              immediate: true,
-                            ),
-                            if (isBranch)
-                              IconButton(
-                                icon: Icon(
-                                  expanded
-                                      ? Icons.expand_more
-                                      : Icons.chevron_right,
-                                ),
-                                tooltip: 'Toggle $label',
-                                onPressed: busy || draggingId != null
-                                    ? null
-                                    : toggleBranch,
-                                constraints: const BoxConstraints(
-                                  minWidth: 40,
-                                  minHeight: 48,
-                                ),
-                                padding: EdgeInsets.zero,
-                              )
-                            else
-                              const SizedBox(width: 40),
-                            Expanded(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 12,
-                                ),
-                                child: Text(
-                                  displayLabel,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.titleSmall,
-                                ),
-                              ),
-                            ),
-                            if (active &&
-                                hoverPosition == JsonDropPosition.inside)
-                              Padding(
-                                padding: const EdgeInsets.only(left: 4),
-                                child: Icon(
-                                  Icons.subdirectory_arrow_right,
-                                  color: color.primary,
-                                  size: 20,
-                                ),
-                              ),
-                            PopupMenuButton<String>(
-                              tooltip: 'Options for $label',
-                              enabled: !busy && draggingId == null,
-                              icon: const Icon(Icons.more_vert),
-                              onSelected: (action) {
-                                switch (action) {
-                                  case 'copy':
-                                    _copy(value);
-                                  case 'edit':
-                                    edit(path, label, value);
-                                  case 'delete':
-                                    delete(path, label);
-                                }
-                              },
-                              itemBuilder: (_) => const [
-                                PopupMenuItem(
-                                  value: 'copy',
-                                  child: Text('Copy'),
-                                ),
-                                PopupMenuItem(
-                                  value: 'edit',
-                                  child: Text('Edit'),
-                                ),
-                                PopupMenuItem(
-                                  value: 'delete',
-                                  child: Text('Delete'),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: AnimatedOpacity(
+            opacity: draggingId == id ? 0.3 : 1,
+            duration: const Duration(milliseconds: 100),
+            child: Material(
+              color: color.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: color.outlineVariant),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  header,
+                  if (!isBranch && expanded) ...[
+                    const Divider(height: 1, thickness: 1),
+                    _valuePanel(path, label, value, index, count),
+                  ],
+                ],
+              ),
+            ),
           ),
         ),
         if (isBranch && expanded)
-          Padding(
-            padding: const EdgeInsets.only(left: 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (children == null || children.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(84, 4, 12, 12),
-                    child: Text(
-                      'No child entries',
-                      style: Theme.of(context).textTheme.bodySmall
-                          ?.copyWith(color: color.onSurfaceVariant),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              border: BorderDirectional(
+                start: BorderSide(color: color.outline.withValues(alpha: 0.45)),
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsetsDirectional.only(start: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (children == null || children.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(84, 4, 12, 12),
+                      child: Text(
+                        'No child entries',
+                        style: Theme.of(context).textTheme.bodySmall
+                            ?.copyWith(color: color.onSurfaceVariant),
+                      ),
                     ),
-                  ),
-                if (children != null)
-                  for (var i = 0; i < children.length; i++)
-                    entry(
-                      [...path, children[i].key],
-                      children[i].key,
-                      children[i].value,
-                      i,
-                      children.length,
-                      showAllChildren: includeAll,
-                    ),
-              ],
+                  if (children != null)
+                    for (var i = 0; i < children.length; i++)
+                      entry(
+                        [...path, children[i].key],
+                        children[i].key,
+                        children[i].value,
+                        i,
+                        children.length,
+                        showAllChildren: includeAll,
+                      ),
+                ],
+              ),
             ),
           ),
       ],

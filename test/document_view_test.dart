@@ -38,11 +38,8 @@ void main() {
     expect(find.text('Alpha'), findsOneWidget);
     expect(find.text('Child'), findsOneWidget);
     expect(find.text('Token'), findsOneWidget);
-    expect(find.text('SECRET-ONE'), findsNothing);
-    await openEntry(tester, '["Alpha","Child","Token"]');
     expect(find.text('SECRET-ONE'), findsOneWidget);
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
     expect(find.text('Ignore'), findsNothing);
     expect(find.text('Beta'), findsNothing);
     query.value = 'token';
@@ -108,38 +105,34 @@ void main() {
     },
   );
 
-  testWidgets(
-    'Compact rows open full values in a dialog with individual copy buttons',
-    (tester) async {
-      final doc = JsonDocument.parse('{"A":"value","B":{"C":{"D":["e","f"]}}}');
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: JsonDocumentView(document: doc, onSave: (_) async => true),
-          ),
+  testWidgets('Nested values appear inline with individual copy buttons', (
+    tester,
+  ) async {
+    final doc = JsonDocument.parse('{"A":"value","B":{"C":{"D":["e","f"]}}}');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: JsonDocumentView(document: doc, onSave: (_) async => true),
         ),
-      );
-      await tester.pumpAndSettle();
-      final outer = find.byKey(const ValueKey('json-["B"]'));
-      expect(
-        find.ancestor(of: find.text('C'), matching: outer),
-        findsOneWidget,
-      );
-      expect(
-        find.ancestor(of: find.text('D'), matching: outer),
-        findsOneWidget,
-      );
-      expect(find.text('e'), findsNothing);
-      expect(find.byTooltip('Add to D'), findsNothing);
-      expect(find.byTooltip('Options for D'), findsOneWidget);
-      expect(find.text('[1]'), findsNothing);
-      expect(find.text('[2]'), findsNothing);
-      expect(find.byTooltip('Copy value'), findsNothing);
-      expect(find.byType(PopupMenuButton<String>), findsNWidgets(4));
-      await openEntry(tester, '["B","C","D"]');
-      expect(find.byTooltip('Copy value'), findsNWidgets(2));
-    },
-  );
+      ),
+    );
+    await tester.pumpAndSettle();
+    final outer = find.byKey(const ValueKey('json-["B"]'));
+    expect(find.ancestor(of: find.text('C'), matching: outer), findsOneWidget);
+    expect(find.ancestor(of: find.text('D'), matching: outer), findsOneWidget);
+    expect(find.text('e'), findsOneWidget);
+    expect(find.byTooltip('Add to D'), findsNothing);
+    expect(find.byTooltip('Options for D'), findsOneWidget);
+    expect(find.text('[1]'), findsNothing);
+    expect(find.text('[2]'), findsNothing);
+    final nested = find.byKey(const ValueKey('json-["B","C","D"]'));
+    expect(
+      find.descendant(of: nested, matching: find.byTooltip('Copy value')),
+      findsNWidgets(2),
+    );
+    expect(find.byType(PopupMenuButton<String>), findsNWidgets(4));
+    expect(find.byType(AlertDialog), findsNothing);
+  });
 
   testWidgets(
     'No value fields creates an empty string; one field creates string',
@@ -465,8 +458,6 @@ void main() {
       expect(doc.data, {
         'D': ['e', 'f'],
       });
-      expect(find.byTooltip('Copy value'), findsNothing);
-      await openEntry(tester, '["D"]');
       expect(find.byTooltip('Copy value'), findsNWidgets(2));
     },
   );
