@@ -4,11 +4,12 @@ JSON Notebook stores hierarchical **JSON** data in Google Drive. The same Flutte
 
 ## App identity and Android sign-in
 
-The Android application ID is `org.starfallorb.jsonnotebook` and the Flutter
-package is `json_notebook`. Register the Android app and the SHA-1 and SHA-256
-fingerprints for each signing certificate in Firebase project `awesome-89e82`.
-Update `lib/firebase_options.dart` with the matching settings if the Firebase
-registration changes.
+The Android application ID is `org.starfallorb.jsonnotebook`, registered as
+**JSON Notebook (Android)** in Firebase project `awesome-89e82`. The Flutter
+package is `json_notebook` and its Firebase options are in
+`lib/firebase_options.dart`. The release signing certificate's SHA-1 and SHA-256
+fingerprints are registered. Register both fingerprints for any additional
+certificate used to sign an Android build.
 
 ## File behavior
 
@@ -91,7 +92,7 @@ JSON Notebook uses Firebase Authentication with the Google provider. On Web, Flu
 opens the Google sign-in popup with `signInWithPopup`. On Android, the app uses
 Google Sign-In and passes its credential into `FirebaseAuth.signInWithCredential`.
 The Firebase project is `awesome-89e82`; its configured Firebase Web App is
-`json-notebook-web`. Google Sign-In must remain enabled at
+`secrets-keep-web`. Google Sign-In must remain enabled at
 [Firebase Authentication](https://console.firebase.google.com/project/awesome-89e82/authentication/providers),
 and the Hosting domain `awesome-89e82.web.app` must be in Authorized domains.
 The shared Firebase Auth project is also used by other apps, so the local
