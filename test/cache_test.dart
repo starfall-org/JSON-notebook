@@ -61,13 +61,14 @@ void main() {
   test('Stale in-memory content can be read offline, but failed writes are not cached', () async {
     final underlying = _InstrumentedDemo();
     final cache = CachedVaultStore(underlying, ttl: Duration.zero);
-    expect(await cache.read('github'), contains('# GitHub'));
+    final original = await underlying.source.read('github');
+    expect(await cache.read('github'), original);
     underlying.offline = true;
-    expect(await cache.read('github'), contains('# GitHub'));
+    expect(await cache.read('github'), original);
     expect(() => cache.write('github', 'should not cache'), throwsStateError);
     underlying.offline = false;
-    expect(await cache.read('github'), contains('# GitHub'));
-    expect(await cache.refreshFile('github'), contains('# GitHub'));
+    expect(await cache.read('github'), original);
+    expect(await cache.refreshFile('github'), original);
     expect(underlying.reads, 4);
   });
 

@@ -50,27 +50,54 @@ class DemoStore implements VaultStore {
     ),
     'services': const DriveEntry(
       id: 'services',
-      name: 'services.md',
-      mimeType: 'text/markdown',
+      name: 'services.json',
+      mimeType: 'application/json',
       parentId: 'root',
     ),
     'github': const DriveEntry(
       id: 'github',
-      name: 'github.md',
-      mimeType: 'text/markdown',
+      name: 'github.json',
+      mimeType: 'application/json',
       parentId: 'root',
     ),
     'main': const DriveEntry(
       id: 'main',
-      name: 'main.md',
-      mimeType: 'text/markdown',
+      name: 'main.json',
+      mimeType: 'application/json',
       parentId: 'cloud',
     ),
   };
   final Map<String, String> _content = {
-    'services': '# Services\n\n## Production\n\n- **Notes**\n\n    ```env\n    API_URL=https://example.internal\n    TOKEN=demo-value\n    ```\n\n## Staging\n\n- **Notes**\n\n    ```text\n    Notes for staging.\n    ```',
-    'github': '# GitHub\n\n## Personal\n\n- **Username**\n\n    ```text\n    demo-user\n    ```',
-    'main': '# Cloud\n\n## Main project\n\n- **Region**\n\n    ```text\n    asia-southeast1\n    ```',
+    'services': r'''{
+  "Services": {
+    "Production": {
+      "Notes": [
+        "API_URL=https://api.example.com\nTOKEN=demo-value",
+        "Example values for the production environment."
+      ]
+    },
+    "Staging": {
+      "Notes": "Notes for staging."
+    }
+  }
+}
+''',
+    'github': '''{
+  "GitHub": {
+    "Personal": {
+      "Username": "demo-user"
+    }
+  }
+}
+''',
+    'main': '''{
+  "Cloud": {
+    "Main project": {
+      "Region": "asia-southeast1"
+    }
+  }
+}
+''',
   };
   @override
   Future<DriveEntry> root() async => _entries['root']!;

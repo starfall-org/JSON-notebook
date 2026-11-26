@@ -1,21 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:json_notebook/json_document.dart';
 import 'package:json_notebook/main.dart';
 
+import 'entry_test_actions.dart';
 import 'signed_out_test_session.dart';
 
 void main() {
-  test('Demo vault exposes its Markdown files and nested folders', () async {
+  test('Demo vault contains formatted JSON files at every level', () async {
     final demo = DemoStore();
     final root = await demo.root();
     expect(root.name, 'secrets');
     final children = await demo.children(root.id);
-    expect(children.any((item) => item.isFolder), isTrue);
-    expect(children.any((item) => item.name == 'services.md'), isTrue);
-    final file = children.firstWhere((e) => e.name == 'services.md');
-    expect(await demo.read(file.id), contains('# Services'));
-    await demo.write(file.id, '# Updated');
-    expect(await demo.read(file.id), '# Updated');
+    final cloud = children.singleWhere((item) => item.isFolder);
+    final files = [
+      ...children.where((item) => !item.isFolder),
+      ...await demo.children(cloud.id),
+    ];
+    expect(
+      files.map((file) => file.name),
+      unorderedEquals(['services.json', 'github.json', 'main.json']),
+    );
+    for (final file in files) {
+      expect(file.mimeType, 'application/json');
+      final source = await demo.read(file.id);
+      final document = JsonDocument.parse(source);
+      expect(document.data, isNotEmpty);
+      expect(document.toJson(), source);
+    }
+    final file = files.singleWhere((item) => item.name == 'services.json');
+    const updated = '{"Status":"Updated"}';
+    await demo.write(file.id, updated);
+    expect(await demo.read(file.id), updated);
   });
 
   testWidgets('Shows a Google sign-in and a demo entry point', (tester) async {
@@ -35,6 +51,17 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('services'), findsOneWidget);
     expect(find.text('cloud'), findsOneWidget);
+    expect(find.text('Markdown'), findsNothing);
+
+    await tester.tap(find.text('services'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Search JSON'), findsOneWidget);
+    await openEntry(tester, '["Services","Production","Notes"]');
+    expect(find.byTooltip('Copy value'), findsNWidgets(2));
+    expect(
+      find.text('API_URL=https://api.example.com\nTOKEN=demo-value'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('Wide vault stays centered and breadcrumbs navigate to root', (

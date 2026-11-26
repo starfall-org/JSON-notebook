@@ -8,20 +8,9 @@ void main() {
   testWidgets(
     'File rows have three-dot icon+text menu for Markdown conversion',
     (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: VaultScreen(
-            themeMode: ThemeMode.system,
-            onTheme: (_) {},
-            session: const SignedOutTestSession(),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Explore demo'));
-      await tester.pumpAndSettle();
-      expect(find.byTooltip('Options for github.md'), findsOneWidget);
-      await tester.tap(find.byTooltip('Options for github.md'));
+      await _openMarkdownVault(tester);
+      expect(find.byTooltip('Options for import.md'), findsOneWidget);
+      await tester.tap(find.byTooltip('Options for import.md'));
       await tester.pumpAndSettle();
       expect(find.text('Convert to JSON'), findsOneWidget);
       expect(find.text('Rename'), findsOneWidget);
@@ -32,7 +21,7 @@ void main() {
       expect(find.text('Convert Markdown to JSON?'), findsOneWidget);
       await tester.tap(find.text('Convert'));
       await tester.pumpAndSettle();
-      expect(find.text('JSON · Structured'), findsOneWidget);
+      expect(find.byTooltip('Options for import.json'), findsOneWidget);
       expect(find.text('Markdown'), findsWidgets);
     },
   );
@@ -120,19 +109,8 @@ void main() {
   testWidgets('Long press on Markdown file opens icon+text context menu', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: VaultScreen(
-          themeMode: ThemeMode.system,
-          onTheme: (_) {},
-          session: const SignedOutTestSession(),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Explore demo'));
-    await tester.pumpAndSettle();
-    await tester.longPress(find.text('services'));
+    await _openMarkdownVault(tester);
+    await tester.longPress(find.text('import'));
     await tester.pumpAndSettle();
     expect(find.text('Convert to JSON'), findsOneWidget);
     expect(find.byIcon(Icons.data_object), findsWidgets);
@@ -217,21 +195,45 @@ void main() {
   );
 
   testWidgets('Markdown is not parsed or rendered at runtime', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: VaultScreen(
-          themeMode: ThemeMode.system,
-          onTheme: (_) {},
-          session: const SignedOutTestSession(),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Explore demo'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('github'));
+    await _openMarkdownVault(tester);
+    await tester.tap(find.text('import'));
     await tester.pumpAndSettle();
     expect(find.text('Markdown source (not rendered)'), findsOneWidget);
     expect(find.text('Username'), findsNothing);
   });
+}
+
+Future<void> _openMarkdownVault(WidgetTester tester) async {
+  final store = DemoStore();
+  final root = await store.root();
+  final file = await store.create(root.id, 'import.md');
+  await store.write(
+    file.id,
+    '# Account\n- Username\n```text\ndemo-user\n```\n',
+  );
+  await tester.pumpWidget(
+    MaterialApp(
+      home: VaultScreen(
+        themeMode: ThemeMode.system,
+        onTheme: (_) {},
+        session: _MarkdownTestSession(store),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+class _MarkdownTestSession implements VaultSession {
+  const _MarkdownTestSession(this.store);
+
+  final VaultStore store;
+
+  @override
+  Future<VaultStore> restore() async => store;
+
+  @override
+  Future<VaultStore?> signIn() async => null;
+
+  @override
+  Future<void> signOut() async {}
 }

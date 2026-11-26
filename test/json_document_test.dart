@@ -416,13 +416,13 @@ void main() {
     'Migration creates a formatted JSON copy while leaving Markdown unmodified',
     () async {
       final store = DemoStore();
-      final file = (await store.children('root'))
-          .firstWhere((e) => e.name == 'services.md');
-      final original = await store.read(file.id);
+      final file = await store.create('root', 'import.md');
+      const original = '# Service\n\n```env\nTOKEN=example\n```\n';
+      await store.write(file.id, original);
       final migration = VaultMigration(store);
       final result = await migration.migrate(file);
       expect(result.state, MigrationState.created);
-      expect(result.destination.name, 'services.json');
+      expect(result.destination.name, 'import.json');
       final formatted = await store.read(result.destination.id);
       expect(formatted, JsonDocument.parse(formatted).toJson());
       expect((jsonDecode(formatted) as Map).containsKey('format'), isFalse);
@@ -437,12 +437,20 @@ void main() {
 
   test('Recursive conversion handles nested files sequentially', () async {
     final store = DemoStore();
+    for (final (folder, name) in [
+      ('root', 'first.md'),
+      ('root', 'second.md'),
+      ('cloud', 'nested.md'),
+    ]) {
+      final source = await store.create(folder, name);
+      await store.write(source.id, '# Entry\n```value```\n');
+    }
     final report = await VaultMigration(store).migrateTree('root');
     expect(report.created, 3);
     expect(report.errors, isEmpty);
     expect((await VaultMigration(store).migrateTree('root')).skipped, 3);
     expect(
-      (await store.children('cloud')).any((e) => e.name == 'main.json'),
+      (await store.children('cloud')).any((e) => e.name == 'nested.json'),
       isTrue,
     );
   });
