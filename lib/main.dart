@@ -1,27 +1,25 @@
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'document_view.dart';
-import 'firebase_options.dart';
+import 'google_drive_session.dart'
+    if (dart.library.js_interop) 'google_drive_session_web.dart';
 import 'folder_drawer.dart';
 import 'json_document.dart';
 import 'notebook_theme.dart';
 import 'system_bars.dart';
 import 'vault_migration.dart';
 import 'vault_naming.dart';
+import 'vault_session.dart';
 import 'vault_store.dart';
 
+export 'vault_session.dart';
 export 'vault_store.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await configureSystemBars();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const JsonNotebookApp());
 }
 
@@ -83,108 +81,6 @@ class _JsonNotebookAppState extends State<JsonNotebookApp> {
   }
 }
 
-/// The signed-in account workflow, separate from the document store. Tests
-/// can inject a controllable session without using Google platform channels.
-abstract class VaultSession {
-  Future<VaultStore?> restore();
-  Future<VaultStore?> signIn();
-  Future<void> signOut();
-}
-
-/// Firebase Authentication owns identity and session persistence. Google
-/// OAuth access tokens are separately required for Drive and remain in RAM.
-class _FirebaseVaultSession implements VaultSession {
-  FirebaseAuth get _auth => FirebaseAuth.instance;
-  late final GoogleSignIn _nativeGoogle = GoogleSignIn(
-    scopes: [driveScope],
-    serverClientId: googleWebClientId,
-  );
-
-  GoogleSignInAccount? _nativeAccount;
-  String? _webDriveToken;
-
-  bool get hasWebIdentity => kIsWeb && _auth.currentUser != null;
-
-  GoogleAuthProvider _driveProvider() =>
-      GoogleAuthProvider()..addScope(driveScope);
-
-  GoogleDriveStore _webStore() => GoogleDriveStore(
-    accessToken: () async => _webDriveToken,
-    // Firebase does not expose a Google OAuth refresh token. A new popup
-    // must start from an explicit user tap, not from a background API request.
-  );
-
-  GoogleDriveStore _nativeStore() => GoogleDriveStore(
-    accessToken: () async {
-      final account = _nativeAccount;
-      return account == null
-          ? null
-          : (await account.authentication).accessToken;
-    },
-    onUnauthorized: () async {
-      final account = await _nativeGoogle.signInSilently();
-      if (account == null) return false;
-      _nativeAccount = account;
-      return (await account.authentication).accessToken != null;
-    },
-  );
-
-  Future<VaultStore> _connectNative(GoogleSignInAccount account) async {
-    final credentials = await account.authentication;
-    if (credentials.idToken == null || credentials.accessToken == null) {
-      throw StateError('Google Drive authorization failed. Sign in again.');
-    }
-    // Also upgrades pre-Firebase native Google sessions on first restoration.
-    await _auth.signInWithCredential(
-      GoogleAuthProvider.credential(
-        idToken: credentials.idToken,
-        accessToken: credentials.accessToken,
-      ),
-    );
-    _nativeAccount = account;
-    return _nativeStore();
-  }
-
-  @override
-  Future<VaultStore?> restore() async {
-    // Wait until Firebase has restored its persisted identity before showing UI.
-    await _auth.authStateChanges().first;
-    if (kIsWeb) {
-      // Firebase restores identity but not Google Drive OAuth access tokens.
-      // A user-initiated popup is required to reconnect Drive after a reload.
-      return _webDriveToken == null ? null : _webStore();
-    }
-    final account = await _nativeGoogle.signInSilently();
-    return account == null ? null : _connectNative(account);
-  }
-
-  @override
-  Future<VaultStore?> signIn() async {
-    if (kIsWeb) {
-      final result = await _auth.signInWithPopup(_driveProvider());
-      final accessToken = result.credential?.accessToken;
-      if (accessToken == null || accessToken.isEmpty) {
-        throw StateError('Google Drive permission was not granted.');
-      }
-      _webDriveToken = accessToken;
-      return _webStore();
-    }
-    final account = await _nativeGoogle.signIn();
-    return account == null ? null : _connectNative(account);
-  }
-
-  @override
-  Future<void> signOut() async {
-    _webDriveToken = null;
-    _nativeAccount = null;
-    try {
-      if (!kIsWeb) await _nativeGoogle.signOut();
-    } finally {
-      await _auth.signOut();
-    }
-  }
-}
-
 class VaultScreen extends StatefulWidget {
   const VaultScreen({
     super.key,
@@ -218,7 +114,7 @@ class _VaultScreenState extends State<VaultScreen> {
   @override
   void initState() {
     super.initState();
-    _session = widget.session ?? _FirebaseVaultSession();
+    _session = widget.session ?? GoogleDriveSession();
     _restore();
   }
 
@@ -777,9 +673,6 @@ class _VaultScreenState extends State<VaultScreen> {
   Widget _loginCard(BuildContext context) {
     final theme = Theme.of(context);
     final color = theme.colorScheme;
-    final session = _session;
-    final reconnect =
-        session is _FirebaseVaultSession && session.hasWebIdentity;
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -823,22 +716,13 @@ class _VaultScreenState extends State<VaultScreen> {
                   FilledButton.icon(
                     onPressed: busy ? null : _login,
                     icon: const Icon(Icons.login),
-                    label: Text(
-                      reconnect
-                          ? 'Reconnect Google Drive'
-                          : 'Continue with Google',
-                    ),
+                    label: const Text('Continue with Google'),
                   ),
                   const SizedBox(height: 6),
                   OutlinedButton(
                     onPressed: busy ? null : () => _connect(DemoStore()),
                     child: const Text('Explore demo'),
                   ),
-                  if (reconnect)
-                    TextButton(
-                      onPressed: busy ? null : _logout,
-                      child: const Text('Sign out'),
-                    ),
                 ],
               ),
             ),

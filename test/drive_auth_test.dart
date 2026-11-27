@@ -5,7 +5,7 @@ import 'package:json_notebook/vault_store.dart';
 
 void main() {
   test(
-    'Google Drive uses the Google OAuth access token, not Firebase ID token',
+    'Google Drive sends the Google OAuth access token as a bearer token',
     () async {
       final observedTokens = <String?>[];
       final store = GoogleDriveStore(

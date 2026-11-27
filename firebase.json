@@ -1,7 +1,7 @@
 {
   "hosting": {
     "public": "build/web",
-    "predeploy": ["flutter build web --release"],
+    "predeploy": ["flutter build web --release --dart-define-from-file=.env.client"],
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [{"source": "**", "destination": "/index.html"}],
     "headers": [

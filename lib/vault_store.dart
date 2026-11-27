@@ -4,8 +4,6 @@ import 'package:http/http.dart' as http;
 
 const folderMime = 'application/vnd.google-apps.folder';
 const driveScope = 'https://www.googleapis.com/auth/drive';
-const googleWebClientId =
-    '1064411966305-6vuqla6hbp2aegichjdb3d748jqji4be.apps.googleusercontent.com';
 
 class DriveEntry {
   const DriveEntry({
@@ -149,9 +147,6 @@ class DemoStore implements VaultStore {
   }
 }
 
-/// A Firebase ID token authenticates the Firebase user, but cannot authorize
-/// Google Drive calls. Drive requests use a separate, short-lived Google OAuth
-/// access token, held in memory and never persisted by the application.
 class DriveAuthorizationExpired implements Exception {
   const DriveAuthorizationExpired();
 

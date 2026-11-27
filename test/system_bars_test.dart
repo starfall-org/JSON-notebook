@@ -7,6 +7,13 @@ import 'package:json_notebook/system_bars.dart';
 import 'package:json_notebook/main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+void mockSignedOutGoogleAccount(WidgetTester tester) {
+  const channel = MethodChannel('plugins.flutter.io/google_sign_in');
+  final messenger = tester.binding.defaultBinaryMessenger;
+  messenger.setMockMethodCallHandler(channel, (_) async => null);
+  addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+}
+
 void main() {
   test(
     'Navigation bar matches app background with suitable light/dark icons',
@@ -82,6 +89,7 @@ void main() {
   testWidgets('App root applies navigation icon contrast for saved theme', (
     tester,
   ) async {
+    mockSignedOutGoogleAccount(tester);
     for (final pair in [(1, Brightness.dark), (2, Brightness.light)]) {
       // ThemeMode.light has index 1 and requires dark navigation icons;
       // ThemeMode.dark has index 2 and requires light navigation icons.
@@ -114,6 +122,7 @@ void main() {
   testWidgets('Both bars follow system changes and explicit app theme', (
     tester,
   ) async {
+    mockSignedOutGoogleAccount(tester);
     SharedPreferences.setMockInitialValues({'theme': ThemeMode.system.index});
     final platform = tester.binding.platformDispatcher;
     addTearDown(platform.clearPlatformBrightnessTestValue);

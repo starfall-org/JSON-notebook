@@ -4,12 +4,10 @@ JSON Notebook stores hierarchical **JSON** data in Google Drive. The same Flutte
 
 ## App identity and Android sign-in
 
-The Android application ID is `org.starfall.jsonnotebook`, registered as
-**JSON Notebook (Android)** in Firebase project `awesome-89e82`. The Flutter
-package is `json_notebook` and its Firebase options are in
-`lib/firebase_options.dart`. The release signing certificate's SHA-1 and SHA-256
-fingerprints are registered. Register both fingerprints for any additional
-certificate used to sign an Android build.
+Android uses Google Sign-In with the package name `org.starfall.jsonnotebook`.
+Register an Android OAuth client for that package and the SHA-1 fingerprint
+of each signing certificate (including debug, if used) in the Google Cloud
+project with the Drive API enabled.
 
 ## File behavior
 
@@ -62,16 +60,25 @@ The Android UI respects system insets: the Material AppBar handles the top statu
 
 ## Development
 
+Create a gitignored `.env.client` at the project root with the public Google OAuth web client ID for browser sign-in:
+
+```dotenv
+GOOGLE_WEB_CLIENT_ID=<web client ID>
+```
+
+The web build embeds this public identifier. Keep signing
+passwords in the separate signing `.env` file.
+
 ```sh
 flutter pub get
 flutter analyze
 flutter test --concurrency=1
-flutter run -d chrome
+flutter run -d chrome --web-port=7357 --dart-define-from-file=.env.client
 ```
 
 ### Firebase Hosting
 
-To build the web release locally, run `flutter build web --release`. Firebase
+To build the web release locally, run `flutter build web --release --dart-define-from-file=.env.client`. Firebase
 Hosting serves the generated `build/web` directory. With Flutter and the
 Firebase CLI available on your PATH, deploy with:
 
@@ -86,31 +93,24 @@ The deploy targets Hosting only.
 
 Place the local `release.jks` and `.env` with `KEYSTORE_PASSWORD`, `KEY_PASSWORD`, and `KEY_ALIAS` at the project root (both must remain gitignored). Use `scripts/build-release.sh` instead of calling Gradle directly: it limits the build to two CPUs/one Gradle worker, stores intermediate build outputs in temporary RAM, and checks that each ABI contains both `libflutter.so` **and `libapp.so`**. Some Flutter/Android Gradle Plugin versions have produced release APKs without `libapp.so`, which crash immediately when opened. If necessary, the script adds the already-compiled AOT library, aligns and re-signs the APK with the release keystore. Do not publish until `python3 scripts/verify-release-apks.py` passes on all three output APKs. The original keystore and passwords must never be uploaded.
 
-### Firebase Authentication and Google Drive
+### Google Drive authorization
 
-JSON Notebook uses Firebase Authentication with the Google provider. On Web, FlutterFire
-opens the Google sign-in popup with `signInWithPopup`. On Android, the app uses
-Google Sign-In and passes its credential into `FirebaseAuth.signInWithCredential`.
-The Firebase project is `awesome-89e82`; its configured Firebase Web App is
-`secrets-keep-web`. Google Sign-In must remain enabled at
-[Firebase Authentication](https://console.firebase.google.com/project/awesome-89e82/authentication/providers),
-and the Hosting domain `awesome-89e82.web.app` must be in Authorized domains.
-The shared Firebase Auth project is also used by other apps, so the local
-`firebase.json` only deploys Hosting and does not overwrite Auth providers.
+Android requests Drive access through Google Sign-In and can restore a
+previously authorized account silently. The browser uses the Google Identity
+Services token popup. Register each web app origin (including the local
+development origin and the Hosting origin) under **Authorized JavaScript
+origins** on the web OAuth client. For a stable local origin use
+`flutter run -d chrome --web-port=7357 --dart-define-from-file=.env.client`
+and register `http://localhost:7357`.
 
-Firebase ID tokens **cannot** authorize Google Drive API calls. Sign-in also
-requests the Google OAuth `https://www.googleapis.com/auth/drive` scope. The
-Drive access token stays in process memory, is not serialized to application
-preferences, and is discarded on sign-out. On Web, Firebase restores the
-identity across reloads. Select **Reconnect Google Drive** to obtain a new
-Drive access token. An expired Drive access token
-shows a **Reconnect Google Drive** action; popups only open on a user gesture.
-Android can renew its Google authorization silently when possible.
+Both platforms call Drive with a short-lived OAuth access token. The app
+keeps tokens in memory. After a web reload, select **Continue with Google**
+again. An expired web session offers **Reconnect Google Drive**. Android
+can renew authorization silently. Firebase Hosting serves the web app.
 
-This Google Drive scope is restricted; Firebase Authentication does **not**
-remove Google's OAuth consent-screen verification or test-user requirements.
-Check Google Auth Platform if real-account consent is blocked. Real-account
-OAuth is not covered by demo/widget tests.
+The existing vault requires the restricted `https://www.googleapis.com/auth/drive`
+scope. Configure the consent screen and eligible test users or verification
+in Google Auth Platform. Real-account consent requires an interactive test.
 
 Destructive file actions require confirmation; Drive items are trashed where
 supported.
