@@ -103,10 +103,11 @@ origins** on the web OAuth client. For a stable local origin use
 `flutter run -d chrome --web-port=7357 --dart-define-from-file=.env.client`
 and register `http://localhost:7357`.
 
-Both platforms call Drive with a short-lived OAuth access token. The app
-keeps tokens in memory. After a web reload, select **Continue with Google**
-again. An expired web session offers **Reconnect Google Drive**. Android
-can renew authorization silently. Firebase Hosting serves the web app.
+Both platforms call Drive with a short-lived OAuth access token. On web,
+session storage lets the same tab reconnect after a reload while the token
+is valid. Signing out clears it. An expired web session offers **Reconnect
+Google Drive**. Android can renew authorization silently. Firebase Hosting
+serves the web app.
 
 The existing vault requires the restricted `https://www.googleapis.com/auth/drive`
 scope. Configure the consent screen and eligible test users or verification

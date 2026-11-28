@@ -6,6 +6,10 @@
     "rewrites": [{"source": "**", "destination": "/index.html"}],
     "headers": [
       {
+        "source": "/",
+        "headers": [{"key": "Cache-Control", "value": "no-cache"}]
+      },
+      {
         "source": "/@(index.html|flutter_bootstrap.js|flutter.js|main.dart.js|manifest.json)",
         "headers": [{"key": "Cache-Control", "value": "no-cache"}]
       },
